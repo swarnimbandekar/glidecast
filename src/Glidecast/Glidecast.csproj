@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>Glidecast</AssemblyName>
+    <RootNamespace>Glidecast.App</RootNamespace>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\glidecast.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\glidecast.ico" />
+    <Resource Include="Assets\logo-64.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Glidecast.Engine\Glidecast.Engine.csproj" />
+  </ItemGroup>
+
+</Project>

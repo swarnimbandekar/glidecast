@@ -1,0 +1,289 @@
+<UserControl x:Class="Glidecast.App.Views.EditorView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="clr-namespace:Glidecast.App.Controls"
+             Focusable="True" FocusVisualStyle="{x:Null}">
+    <UserControl.Resources>
+        <Style x:Key="Row" TargetType="DockPanel">
+            <Setter Property="Margin" Value="0,10,0,0" />
+        </Style>
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource Panel2}" />
+            <Setter Property="BorderBrush" Value="{StaticResource Border}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Padding" Value="14" />
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <!-- Moved into the window title bar at runtime. -->
+        <Grid x:Name="TitleBar" VerticalAlignment="Stretch">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <Rectangle Width="1" Height="20" Fill="{StaticResource Border}" Margin="0,0,10,0" />
+                <Button Style="{StaticResource IconButton}" Content="&#xE72B;" Click="Home_Click" ToolTip="Back to home" />
+                <TextBlock x:Name="ProjectName" Style="{StaticResource Title}" FontSize="13.5" VerticalAlignment="Center" Margin="8,0,10,0" TextTrimming="CharacterEllipsis" MaxWidth="380" />
+                <Border Background="{StaticResource Panel3}" CornerRadius="6" Padding="8,3" VerticalAlignment="Center">
+                    <TextBlock x:Name="SourceInfo" FontSize="11.5" Foreground="{StaticResource Subtext}" />
+                </Border>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0">
+                <Ellipse x:Name="SaveDot" Width="7" Height="7" Fill="{StaticResource Success}" VerticalAlignment="Center" Margin="0,0,7,0" />
+                <TextBlock x:Name="SaveState" Text="Saved" FontSize="12" Foreground="{StaticResource Subtext}" VerticalAlignment="Center" Margin="0,0,16,0" />
+                <Button AutomationProperties.Name="Export" Style="{StaticResource PrimaryButton}" Padding="16,7" Click="Export_Click" ToolTip="Export video (Ctrl+E)">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Style="{StaticResource Icon}" Text="&#xE898;" FontSize="13" Margin="0,0,8,0" Foreground="White" />
+                        <TextBlock Text="Export" Foreground="White" />
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+        </Grid>
+
+        <Grid x:Name="Body">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="360" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Stage -->
+            <Grid Margin="28,22,28,10">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Border x:Name="StageFrame" CornerRadius="12" Background="#07080A" HorizontalAlignment="Center" VerticalAlignment="Center"
+                        Effect="{StaticResource SoftShadow}" ClipToBounds="True">
+                    <Image x:Name="Preview" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" MouseLeftButtonDown="Preview_Click" />
+                </Border>
+
+                <Grid Grid.Row="1" Margin="0,16,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock x:Name="TimeNow" FontFamily="{StaticResource MonoFont}" FontSize="15" Text="00:00.0" />
+                        <TextBlock x:Name="TimeTotal" FontFamily="{StaticResource MonoFont}" FontSize="15" Foreground="{StaticResource Subtext}" Margin="6,0,0,0" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button Style="{StaticResource IconButton}" Content="&#xE892;" Click="Back5_Click" ToolTip="Back 5 s (Shift+←)" Width="40" Height="40" />
+                        <Button x:Name="PlayButton" AutomationProperties.Name="Play" Click="Play_Click" Width="48" Height="48" Margin="10,0" Padding="0"
+                                Style="{StaticResource PrimaryButton}" ToolTip="Play / Pause (Space)">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Grid>
+                                        <Ellipse x:Name="e" Fill="{StaticResource AccentGradient}" />
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Grid>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="e" Property="Fill" Value="{StaticResource AccentGradientHover}" />
+                                            <Setter TargetName="e" Property="Effect" Value="{StaticResource GlowShadow}" />
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                            <TextBlock x:Name="PlayIcon" Style="{StaticResource Icon}" Text="&#xE768;" FontSize="17" Foreground="White" Margin="2,0,0,0" />
+                        </Button>
+                        <Button Style="{StaticResource IconButton}" Content="&#xE893;" Click="Fwd5_Click" ToolTip="Forward 5 s (Shift+→)" Width="40" Height="40" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                        <Border Background="{StaticResource Panel3}" CornerRadius="7" Padding="9,4">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Style="{StaticResource Icon}" Text="&#xE8A3;" FontSize="12" Foreground="#A996FF" />
+                                <TextBlock x:Name="ZoomNow" FontFamily="{StaticResource MonoFont}" FontSize="12" Margin="6,0,0,0" Text="1.0×" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Grid>
+            </Grid>
+
+            <!-- Timeline -->
+            <Border Grid.Row="1" Background="{StaticResource Panel}" BorderBrush="{StaticResource Border}" BorderThickness="0,1,1,0">
+                <DockPanel>
+                    <DockPanel DockPanel.Dock="Top" Margin="16,10,16,4" LastChildFill="False">
+                        <TextBlock Text="Timeline" Style="{StaticResource Title}" FontSize="13" VerticalAlignment="Center" />
+                        <TextBlock x:Name="ZoomStats" Style="{StaticResource Hint}" VerticalAlignment="Center" Margin="12,0,0,0" />
+                        <TextBlock DockPanel.Dock="Right" Style="{StaticResource Hint}" VerticalAlignment="Center" Opacity="0.75"
+                                   Text="Space play · ←/→ step · Del delete · double-click lane to add" />
+                        <Button DockPanel.Dock="Right" Padding="10,5" Margin="0,0,14,0" Click="AddZoom_Click" ToolTip="Add a zoom at the playhead (Z)">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Style="{StaticResource Icon}" Text="&#xE710;" FontSize="11" Margin="0,0,7,0" />
+                                <TextBlock Text="Add zoom" FontSize="12" />
+                            </StackPanel>
+                        </Button>
+                    </DockPanel>
+                    <c:TimelineControl x:Name="Timeline" Margin="0,0,0,6" />
+                </DockPanel>
+            </Border>
+
+            <!-- Inspector -->
+            <Border Grid.Column="1" Grid.RowSpan="2" Background="{StaticResource Panel}" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0">
+                <DockPanel>
+                    <Border DockPanel.Dock="Top" BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1" Padding="10,10">
+                        <UniformGrid Columns="4">
+                            <RadioButton x:Name="TabBg" Content="Background" Tag="&#xEB9F;" Style="{StaticResource InspectorTab}" GroupName="tab" IsChecked="True" Checked="Tab_Changed" />
+                            <RadioButton x:Name="TabFrame" Content="Frame" Tag="&#xE7F4;" Style="{StaticResource InspectorTab}" GroupName="tab" Checked="Tab_Changed" />
+                            <RadioButton x:Name="TabCursor" Content="Cursor" Tag="&#xE7C9;" Style="{StaticResource InspectorTab}" GroupName="tab" Checked="Tab_Changed" />
+                            <RadioButton x:Name="TabZoom" Content="Zoom" Tag="&#xE8A3;" Style="{StaticResource InspectorTab}" GroupName="tab" Checked="Tab_Changed" />
+                        </UniformGrid>
+                    </Border>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20,4,16,24">
+                        <Grid>
+                            <!-- BACKGROUND -->
+                            <StackPanel x:Name="BgPanel">
+                                <TextBlock Text="TYPE" Style="{StaticResource SectionLabel}" />
+                                <Border Style="{StaticResource SegmentHost}" HorizontalAlignment="Stretch">
+                                    <UniformGrid Columns="3">
+                                        <RadioButton x:Name="BgGradient" Content="Gradient" Style="{StaticResource Segment}" GroupName="bg" Checked="BgKind_Changed" />
+                                        <RadioButton x:Name="BgSolid" Content="Solid" Style="{StaticResource Segment}" GroupName="bg" Checked="BgKind_Changed" />
+                                        <RadioButton x:Name="BgImage" Content="Wallpaper" Style="{StaticResource Segment}" GroupName="bg" Checked="BgKind_Changed" />
+                                    </UniformGrid>
+                                </Border>
+                                <StackPanel x:Name="GradientPanel">
+                                    <TextBlock Text="PRESETS" Style="{StaticResource SectionLabel}" />
+                                    <WrapPanel x:Name="GradientSwatches" />
+                                </StackPanel>
+                                <StackPanel x:Name="SolidPanel">
+                                    <TextBlock Text="COLOR" Style="{StaticResource SectionLabel}" />
+                                    <WrapPanel x:Name="SolidSwatches" />
+                                    <DockPanel Margin="0,4,0,0">
+                                        <Border x:Name="SolidPreview" Width="34" Height="34" CornerRadius="8" BorderBrush="#26FFFFFF" BorderThickness="1" Margin="0,0,10,0" />
+                                        <TextBox x:Name="SolidHex" TextChanged="SolidHex_Changed" FontFamily="{StaticResource MonoFont}" />
+                                    </DockPanel>
+                                </StackPanel>
+                                <StackPanel x:Name="ImagePanel">
+                                    <TextBlock Text="WALLPAPER" Style="{StaticResource SectionLabel}" />
+                                    <Border CornerRadius="10" Height="150" Background="{StaticResource Bg}" BorderBrush="{StaticResource Border}" BorderThickness="1" ClipToBounds="True">
+                                        <Grid>
+                                            <Border x:Name="WallPreview" CornerRadius="10" />
+                                            <TextBlock x:Name="ImageName" Style="{StaticResource Hint}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        </Grid>
+                                    </Border>
+                                    <Button HorizontalAlignment="Left" Margin="0,10,0,0" Click="ChooseImage_Click">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Style="{StaticResource Icon}" Text="&#xE838;" FontSize="12" Margin="0,0,8,0" />
+                                            <TextBlock Text="Choose image…" />
+                                        </StackPanel>
+                                    </Button>
+                                    <DockPanel Style="{StaticResource Row}" Margin="0,14,0,0"><TextBlock x:Name="BlurVal" Style="{StaticResource Value}" DockPanel.Dock="Right" /><TextBlock Text="Blur" /></DockPanel>
+                                    <Slider x:Name="BlurSlider" Minimum="0" Maximum="60" ValueChanged="Style_Changed" />
+                                </StackPanel>
+                            </StackPanel>
+
+                            <!-- FRAME -->
+                            <StackPanel x:Name="FramePanel" Visibility="Collapsed">
+                                <TextBlock Text="LAYOUT" Style="{StaticResource SectionLabel}" />
+                                <DockPanel><TextBlock x:Name="PaddingVal" Style="{StaticResource Value}" DockPanel.Dock="Right" /><TextBlock Text="Padding" /></DockPanel>
+                                <Slider x:Name="PaddingSlider" Minimum="0" Maximum="0.2" ValueChanged="Style_Changed" />
+                                <DockPanel Style="{StaticResource Row}"><TextBlock x:Name="RadiusVal" Style="{StaticResource Value}" DockPanel.Dock="Right" /><TextBlock Text="Corner radius" /></DockPanel>
+                                <Slider x:Name="RadiusSlider" Minimum="0" Maximum="60" ValueChanged="Style_Changed" />
+                                <DockPanel Style="{StaticResource Row}"><TextBlock x:Name="ShadowVal" Style="{StaticResource Value}" DockPanel.Dock="Right" /><TextBlock Text="Shadow" /></DockPanel>
+                                <Slider x:Name="ShadowSlider" Minimum="0" Maximum="100" ValueChanged="Style_Changed" />
+
+                                <TextBlock Text="EFFECTS" Style="{StaticResource SectionLabel}" />
+                                <CheckBox x:Name="MotionBlurToggle" Style="{StaticResource Switch}" Click="Style_Changed">
+                                    <StackPanel><TextBlock Text="Motion blur" /><TextBlock Text="Softens the screen during fast camera moves." Style="{StaticResource Hint}" /></StackPanel>
+                                </CheckBox>
+                                <CheckBox x:Name="KeysToggle" Style="{StaticResource Switch}" Click="Style_Changed" Margin="0,10,0,0">
+                                    <StackPanel><TextBlock Text="Keystrokes" /><TextBlock Text="Show pressed keys as keycaps." Style="{StaticResource Hint}" /></StackPanel>
+                                </CheckBox>
+                            </StackPanel>
+
+                            <!-- CURSOR -->
+                            <StackPanel x:Name="CursorPanel" Visibility="Collapsed">
+                                <CheckBox x:Name="CursorToggle" Style="{StaticResource Switch}" Click="Style_Changed" Margin="0,18,0,0">
+                                    <TextBlock Text="Show cursor" FontWeight="SemiBold" />
+                                </CheckBox>
+                                <TextBlock Text="STYLE" Style="{StaticResource SectionLabel}" />
+                                <WrapPanel x:Name="CursorStyles" />
+                                <TextBlock Text="SIZE" Style="{StaticResource SectionLabel}" Margin="0,12,0,10" />
+                                <Border Style="{StaticResource SegmentHost}" HorizontalAlignment="Stretch">
+                                    <UniformGrid Columns="4">
+                                        <RadioButton x:Name="SizeS" Content="S" Tag="1.0" Style="{StaticResource Segment}" GroupName="csize" Checked="SizePreset_Checked" />
+                                        <RadioButton x:Name="SizeM" Content="M" Tag="1.6" Style="{StaticResource Segment}" GroupName="csize" Checked="SizePreset_Checked" />
+                                        <RadioButton x:Name="SizeL" Content="L" Tag="2.3" Style="{StaticResource Segment}" GroupName="csize" Checked="SizePreset_Checked" />
+                                        <RadioButton x:Name="SizeXL" Content="XL" Tag="3.2" Style="{StaticResource Segment}" GroupName="csize" Checked="SizePreset_Checked" />
+                                    </UniformGrid>
+                                </Border>
+                                <DockPanel Style="{StaticResource Row}"><TextBlock x:Name="CursorVal" Style="{StaticResource Value}" DockPanel.Dock="Right" /><TextBlock Text="Fine size" Foreground="{StaticResource Subtext}" /></DockPanel>
+                                <Slider x:Name="CursorSlider" Minimum="0.6" Maximum="4" ValueChanged="Style_Changed" />
+                                <DockPanel Style="{StaticResource Row}"><TextBlock x:Name="SmoothVal" Style="{StaticResource Value}" DockPanel.Dock="Right" /><TextBlock Text="Movement smoothing" /></DockPanel>
+                                <Slider x:Name="SmoothSlider" Minimum="0" Maximum="1" ValueChanged="Style_Changed" />
+
+                                <TextBlock Text="CLICK EFFECT" Style="{StaticResource SectionLabel}" />
+                                <WrapPanel x:Name="ClickEffects" />
+                                <TextBlock Text="ACCENT" Style="{StaticResource SectionLabel}" Margin="0,12,0,10" />
+                                <WrapPanel x:Name="AccentSwatches" />
+                                <CheckBox x:Name="IdleToggle" Style="{StaticResource Switch}" Click="Style_Changed" Margin="0,8,0,0">
+                                    <StackPanel><TextBlock Text="Hide when idle" /><TextBlock Text="Fade the cursor out after 2.5 s without movement." Style="{StaticResource Hint}" /></StackPanel>
+                                </CheckBox>
+                            </StackPanel>
+
+                            <!-- ZOOM -->
+                            <StackPanel x:Name="ZoomPanel" Visibility="Collapsed">
+                                <Border x:Name="SelectedCard" Style="{StaticResource Card}" Margin="0,18,0,0">
+                                    <StackPanel>
+                                        <DockPanel>
+                                            <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE74D;" Click="DeleteSel_Click" ToolTip="Delete zoom (Del)" Foreground="{StaticResource Danger}" Width="30" Height="30" />
+                                            <TextBlock Text="Selected zoom" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                        </DockPanel>
+                                        <TextBlock x:Name="SelTimes" Style="{StaticResource Hint}" FontFamily="{StaticResource MonoFont}" Margin="0,4,0,8" />
+                                        <DockPanel><TextBlock x:Name="SelScaleVal" Style="{StaticResource Value}" DockPanel.Dock="Right" /><TextBlock Text="Zoom level" /></DockPanel>
+                                        <Slider x:Name="SelScale" Minimum="1.1" Maximum="4" ValueChanged="SelScale_Changed" />
+                                        <TextBlock Style="{StaticResource Hint}" Margin="0,8,0,10" Text="Click anywhere on the preview to aim this zoom." />
+                                        <Button HorizontalAlignment="Left" Padding="10,5" Click="JumpSel_Click">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Style="{StaticResource Icon}" Text="&#xE768;" FontSize="11" Margin="0,0,7,0" />
+                                                <TextBlock Text="Preview from start" FontSize="12" />
+                                            </StackPanel>
+                                        </Button>
+                                    </StackPanel>
+                                </Border>
+                                <Border x:Name="NoSelection" Style="{StaticResource Card}" Margin="0,18,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="No zoom selected" FontWeight="SemiBold" />
+                                        <TextBlock Style="{StaticResource Hint}" Margin="0,4,0,0"
+                                                   Text="Click a block on the timeline to edit it. Drag it to move, drag its edges to resize, double-click the lane to add one." />
+                                    </StackPanel>
+                                </Border>
+
+                                <TextBlock Text="CAMERA MOTION" Style="{StaticResource SectionLabel}" />
+                                <Border Style="{StaticResource SegmentHost}" HorizontalAlignment="Stretch">
+                                    <UniformGrid Columns="3">
+                                        <RadioButton x:Name="SpeedGentle" Content="Gentle" Style="{StaticResource Segment}" GroupName="speed" Checked="Speed_Checked" />
+                                        <RadioButton x:Name="SpeedSmooth" Content="Smooth" Style="{StaticResource Segment}" GroupName="speed" Checked="Speed_Checked" />
+                                        <RadioButton x:Name="SpeedSnappy" Content="Snappy" Style="{StaticResource Segment}" GroupName="speed" Checked="Speed_Checked" />
+                                    </UniformGrid>
+                                </Border>
+                                <CheckBox x:Name="FollowToggle" Style="{StaticResource Switch}" Click="Follow_Click" Margin="0,14,0,0">
+                                    <StackPanel><TextBlock Text="Follow cursor" /><TextBlock Text="While zoomed, pan to keep the cursor in view." Style="{StaticResource Hint}" /></StackPanel>
+                                </CheckBox>
+
+                                <TextBlock Text="AUTO ZOOM" Style="{StaticResource SectionLabel}" />
+                                <DockPanel><TextBlock x:Name="AutoScaleVal" Style="{StaticResource Value}" DockPanel.Dock="Right" /><TextBlock Text="Default zoom level" /></DockPanel>
+                                <Slider x:Name="AutoScale" Minimum="1.2" Maximum="3.5" ValueChanged="AutoScale_Changed" />
+                                <Button HorizontalAlignment="Left" Margin="0,12,0,0" Click="Regenerate_Click">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Style="{StaticResource Icon}" Text="&#xE945;" FontSize="12" Margin="0,0,8,0" Foreground="#A996FF" />
+                                        <TextBlock Text="Regenerate from clicks" />
+                                    </StackPanel>
+                                </Button>
+                                <TextBlock Style="{StaticResource Hint}" Margin="0,8,0,0" Text="Rebuilds the zoom lane from your clicks and typing. Replaces manual edits." />
+                            </StackPanel>
+                        </Grid>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

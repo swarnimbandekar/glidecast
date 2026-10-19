@@ -1,0 +1,12 @@
+bin/
+obj/
+artifacts/
+*.user
+*.suo
+.vs/
+.vscode/
+*.DotSettings.user
+# local recordings / test output
+recordings/
+*.mp4
+!docs/media/*.mp4
