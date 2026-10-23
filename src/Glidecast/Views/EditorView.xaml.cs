@@ -18,8 +18,9 @@ namespace Glidecast.App.Views;
 
 /// <summary>
 /// Editor: live preview with transport, zoom timeline editing, and the
-/// inspector (background, frame, cursor, zoom). Every change is pushed to the
-/// preview and auto-saved to project.json.
+/// inspector (background, frame, cursor, zoom, annotations, camera and audio).
+/// Every change is pushed to the preview, auto-saved to project.json and
+/// recorded for undo.
 /// </summary>
 public partial class EditorView : UserControl
 {
@@ -57,6 +58,22 @@ public partial class EditorView : UserControl
     private bool _closed;
     // The zoom lane was edited by hand since it was last generated.
     private bool _laneEdited;
+    private readonly AudioPreview _audio;
+
+    // Undo history: snapshots of the editable state. A change is committed once
+    // edits pause and the mouse is up, so a whole drag is one step.
+    private readonly List<string> _undo = new();
+    private readonly List<string> _redo = new();
+    private string _committed;
+    private readonly DispatcherTimer _undoTimer = new() { Interval = TimeSpan.FromMilliseconds(450) };
+    private const int MaxUndo = 300;
+
+    // Dragging things on the preview.
+    private enum PreviewDrag { None, Note, NoteSize, Webcam }
+    private PreviewDrag _drag;
+    private SKPoint _dragFrom;            // output pixels
+    private Annotation? _dragOrig;        // the annotation before the drag
+    private SKRect _dragWebcam;           // the bubble before the drag
 
     private StyleSettings St => _p.Style!;
 
@@ -91,12 +108,21 @@ public partial class EditorView : UserControl
         Timeline.SeekRequested += t => _player.Seek(t);
         Timeline.SegmentsChanged += OnSegmentsChanged;
         Timeline.SelectionChanged += _ => RefreshSelection();
-        Timeline.NoteSelectionChanged += _ => RefreshNote();
-        Timeline.NotesChanged += () => { RefreshNote(); PushToPreview(cameraChanged: false); MarkDirty(); };
+        Timeline.NoteSelectionChanged += OnNoteSelected;
+        Timeline.NotesChanged += () => { RefreshNote(); PushToPreview(cameraChanged: false); UpdateOverlay(); MarkDirty(); };
+        Timeline.ViewChanged += () => TimelineFit.IsEnabled = Timeline.IsZoomed;
 
         _saveTimer.Tick += (_, _) => { _saveTimer.Stop(); SaveNow(); };
         // Rebuilding the camera is cheap but not free; coalesce bursts (slider drags).
         _cameraTimer.Tick += (_, _) => { _cameraTimer.Stop(); RebuildCamera(); };
+        _undoTimer.Tick += (_, _) =>
+        {
+            if (Mouse.LeftButton == MouseButtonState.Pressed) return; // still dragging
+            _undoTimer.Stop();
+            Commit();
+        };
+        _committed = _p.SnapshotEdits();
+        _audio = new AudioPreview(_p);
 
         BuildSwatches();
         BuildGalleries();
@@ -104,8 +130,11 @@ public partial class EditorView : UserControl
         RefreshSelection();
         RefreshNote();
         BuildLooks();
-        PreviewKeyDown += OnKeys;
+        RefreshMedia();
+        // On the window, so shortcuts work wherever focus is (title bar buttons included).
+        _shell.PreviewKeyDown += OnKeys;
         Loaded += (_, _) => Focus();
+        PreviewHost.SizeChanged += (_, _) => UpdateOverlay();
         _ = LoadFilmStripAsync();
     }
 
@@ -129,10 +158,13 @@ public partial class EditorView : UserControl
     {
         if (_closed) return;
         _closed = true;
+        _shell.PreviewKeyDown -= OnKeys;
         _saveTimer.Stop();
         _cameraTimer.Stop();
+        _undoTimer.Stop();
         SaveNow();
         _player.Dispose();
+        _audio.Dispose();
     }
 
     private void MarkDirty()
@@ -142,7 +174,77 @@ public partial class EditorView : UserControl
         SaveDot.Fill = (Brush)FindResource("Accent");
         _saveTimer.Stop();
         _saveTimer.Start();
+        _undoTimer.Stop();
+        _undoTimer.Start();
+        UndoButton.IsEnabled = true;
     }
+
+    // ---------------------------------------------------------------- undo / redo
+
+    private void Commit()
+    {
+        string now = _p.SnapshotEdits();
+        if (now == _committed) return;
+        _undo.Add(_committed);
+        if (_undo.Count > MaxUndo) _undo.RemoveAt(0);
+        _redo.Clear();
+        _committed = now;
+        UpdateUndoButtons();
+    }
+
+    private void Undo()
+    {
+        _undoTimer.Stop();
+        Commit(); // a change still waiting to be recorded is the one to undo
+        if (_undo.Count == 0) return;
+        _redo.Add(_committed);
+        _committed = _undo[^1];
+        _undo.RemoveAt(_undo.Count - 1);
+        Restore(_committed);
+    }
+
+    private void Redo()
+    {
+        _undoTimer.Stop();
+        Commit();
+        if (_redo.Count == 0) return;
+        _undo.Add(_committed);
+        _committed = _redo[^1];
+        _redo.RemoveAt(_redo.Count - 1);
+        Restore(_committed);
+    }
+
+    private void Restore(string snapshot)
+    {
+        var aspectBefore = St.Aspect;
+        _p.RestoreEdits(snapshot);
+        _p.Zoom ??= new ZoomSettings();
+        _p.Style ??= new StyleSettings();
+        _p.ZoomSegments ??= ZoomAuthor.BuildSegments(_p, _p.Zoom);
+        Timeline.Project = _p; // clears the selection: the old objects are gone
+        Timeline.InvalidateVisual();
+        BuildGalleries();
+        LoadStyleControls();
+        RefreshSelection();
+        RefreshNote();
+        RefreshMedia();
+        _audio.Rebind(_p.Audio);
+        _camera = _p.BuildCamera();
+        if (St.Aspect != aspectBefore) SwapPlayer();
+        else _player.Update(_camera, St);
+        UpdateOverlay();
+        UpdateUndoButtons();
+        MarkDirty();
+    }
+
+    private void UpdateUndoButtons()
+    {
+        UndoButton.IsEnabled = _undo.Count > 0 || _p.SnapshotEdits() != _committed;
+        RedoButton.IsEnabled = _redo.Count > 0;
+    }
+
+    private void Undo_Click(object sender, RoutedEventArgs e) => Undo();
+    private void Redo_Click(object sender, RoutedEventArgs e) => Redo();
 
     private void SaveNow()
     {
@@ -171,11 +273,33 @@ public partial class EditorView : UserControl
 
     private void OnKeys(object sender, KeyEventArgs e)
     {
-        if (Keyboard.FocusedElement is TextBox) return;
+        // Text boxes keep their own editing keys, Ctrl+Z included.
+        if (Keyboard.FocusedElement is TextBox || _closed) return;
         double frame = 1000.0 / _p.Fps;
-        bool shift = Keyboard.Modifiers == ModifierKeys.Shift;
+        var mods = Keyboard.Modifiers;
+        bool shift = mods == ModifierKeys.Shift;
         switch (e.Key)
         {
+            case Key.Z when mods == ModifierKeys.Control:
+                Undo();
+                break;
+            case Key.Z when mods == (ModifierKeys.Control | ModifierKeys.Shift):
+            case Key.Y when mods == ModifierKeys.Control:
+                Redo();
+                break;
+            case Key.OemPlus or Key.Add when mods == ModifierKeys.Control:
+                Timeline.ZoomBy(1.5);
+                break;
+            case Key.OemMinus or Key.Subtract when mods == ModifierKeys.Control:
+                Timeline.ZoomBy(1 / 1.5);
+                break;
+            case Key.D0 or Key.NumPad0 when mods == ModifierKeys.Control:
+                Timeline.ZoomToFit();
+                break;
+            case Key.Escape when Timeline.SelectedNote != null || Timeline.Selected != null:
+                Timeline.SelectedNote = null;
+                Timeline.Selected = null;
+                break;
             case Key.Space:
                 _player.TogglePlay();
                 break;
@@ -207,6 +331,9 @@ public partial class EditorView : UserControl
     }
 
     private void Play_Click(object sender, RoutedEventArgs e) => _player.TogglePlay();
+    private void TimelineIn_Click(object sender, RoutedEventArgs e) => Timeline.ZoomBy(1.5);
+    private void TimelineOut_Click(object sender, RoutedEventArgs e) => Timeline.ZoomBy(1 / 1.5);
+    private void TimelineFit_Click(object sender, RoutedEventArgs e) => Timeline.ZoomToFit();
     private void Back5_Click(object sender, RoutedEventArgs e) => _player.Seek(_player.Position - 5000);
     private void Fwd5_Click(object sender, RoutedEventArgs e) => _player.Seek(_player.Position + 5000);
 
@@ -298,18 +425,238 @@ public partial class EditorView : UserControl
         MarkDirty();
     }
 
-    private void Preview_Click(object sender, MouseButtonEventArgs e)
+    // ---------------------------------------------------------------- picking on the preview
+
+    /// <summary>Preview element pixels → output pixels.</summary>
+    private SKPoint ToOutput(Point pos) =>
+        new((float)(pos.X / Preview.ActualWidth * _player.OutWidth), (float)(pos.Y / Preview.ActualHeight * _player.OutHeight));
+
+    private Rect ToPreview(SKRect r)
     {
-        if (Preview.ActualWidth <= 0 || PreviewToSource(e.GetPosition(Preview)) is not { } src) return;
-        if (Timeline.SelectedNote is { } note)
+        double kx = Preview.ActualWidth / _player.OutWidth, ky = Preview.ActualHeight / _player.OutHeight;
+        return new Rect(r.Left * kx, r.Top * ky, Math.Max(0, r.Width * kx), Math.Max(0, r.Height * ky));
+    }
+
+    /// <summary>Camera matrix, annotation unit and visible card at the playhead, in output pixels.</summary>
+    private (SKMatrix M, float U, SKRect Card) OutputGeometry()
+    {
+        double t = _player.Position;
+        int w = _player.OutWidth, h = _player.OutHeight;
+        var m = Compositor.CameraFor(_p, _camera, St, w, h, t);
+        var card = m.MapRect(new SKRect(0, 0, _p.Width, _p.Height));
+        if (!card.IntersectsWith(new SKRect(0, 0, w, h))) card = new SKRect(0, 0, w, h);
+        else card.Intersect(new SKRect(0, 0, w, h));
+        return (m, Compositor.AnnotationUnit(_camera, w, h, t), card);
+    }
+
+    private bool NoteVisible(Annotation a) =>
+        St.DrawAnnotations && _player.Position >= a.Start && _player.Position <= a.End;
+
+    private bool WebcamVisible() =>
+        _player.HasWebcam && St.ShowWebcam && _p.Webcam is { FrameTimes.Count: > 0 } wc &&
+        _player.Position >= wc.FrameTimes[0] && _player.Position <= wc.FrameTimes[^1] + 500;
+
+    private SKRect WebcamRect() => Compositor.WebcamRect(St, _player.OutWidth, _player.OutHeight);
+
+    /// <summary>The annotation under an output point (the selected one first, then the topmost).</summary>
+    private Annotation? HitNote(SKPoint pt)
+    {
+        if (_p.Annotations is not { Count: > 0 } notes) return null;
+        var (m, u, card) = OutputGeometry();
+        float slop = 5 * _player.OutWidth / (float)Math.Max(1, Preview.ActualWidth);
+        if (Timeline.SelectedNote is { } sel && NoteVisible(sel) && AnnotationPainter.Hit(sel, m, u, card, pt, slop)) return sel;
+        for (int i = notes.Count - 1; i >= 0; i--)
+            if (NoteVisible(notes[i]) && AnnotationPainter.Hit(notes[i], m, u, card, pt, slop)) return notes[i];
+        return null;
+    }
+
+    /// <summary>The resize grip of a selected box (bottom-right corner), in output pixels.</summary>
+    private SKRect? SizeGrip()
+    {
+        if (Timeline.SelectedNote is not { Kind: AnnotationKind.Highlight or AnnotationKind.Spotlight } a || !NoteVisible(a)) return null;
+        var (m, u, card) = OutputGeometry();
+        var r = AnnotationPainter.Bounds(a, m, u, card);
+        float g = 9 * _player.OutWidth / (float)Math.Max(1, Preview.ActualWidth);
+        return new SKRect(r.Right - g, r.Bottom - g, r.Right + g, r.Bottom + g);
+    }
+
+    private void Preview_Down(object sender, MouseButtonEventArgs e)
+    {
+        if (Preview.ActualWidth <= 0) return;
+        var pt = ToOutput(e.GetPosition(Preview));
+        _dragFrom = pt;
+        Focus();
+
+        if (SizeGrip() is { } grip && grip.Contains(pt))
         {
-            MoveNote(note, src.X, src.Y);
+            _drag = PreviewDrag.NoteSize;
+            _dragOrig = Timeline.SelectedNote!.Clone();
+        }
+        else if (HitNote(pt) is { } note)
+        {
+            Timeline.SelectedNote = note;
+            _drag = PreviewDrag.Note;
+            _dragOrig = note.Clone();
+        }
+        else if (WebcamVisible() && WebcamRect().Contains(pt))
+        {
+            _drag = PreviewDrag.Webcam;
+            _dragWebcam = WebcamRect();
+            if (TabMedia.IsChecked != true) TabMedia.IsChecked = true;
+        }
+        else if (Timeline.SelectedNote != null)
+        {
+            // Clicking empty space lets go of the annotation.
+            Timeline.SelectedNote = null;
             return;
         }
-        if (Timeline.Selected is not { } s) return;
-        var (cx, cy) = ZoomAuthor.ClampCenter(src.X, src.Y, _p.Width, _p.Height, s.Scale);
-        s.Cx = cx; s.Cy = cy;
-        OnSegmentsChanged();
+        else if (Timeline.Selected is { } s && PreviewToSource(e.GetPosition(Preview)) is { } src)
+        {
+            // Aim the selected zoom here.
+            var (cx, cy) = ZoomAuthor.ClampCenter(src.X, src.Y, _p.Width, _p.Height, s.Scale);
+            s.Cx = cx; s.Cy = cy;
+            OnSegmentsChanged();
+            return;
+        }
+        else return;
+
+        PreviewHost.CaptureMouse();
+        e.Handled = true;
+    }
+
+    private void Preview_Move(object sender, MouseEventArgs e)
+    {
+        if (Preview.ActualWidth <= 0) return;
+        var pt = ToOutput(e.GetPosition(Preview));
+        if (_drag == PreviewDrag.None)
+        {
+            HoverAt(pt);
+            return;
+        }
+
+        if (_drag == PreviewDrag.Webcam)
+        {
+            // Bubble follows the pointer; X/Y are its place in the free space.
+            int w = _player.OutWidth, h = _player.OutHeight;
+            float margin = Math.Min(w, h) * 0.035f;
+            float left = _dragWebcam.Left + pt.X - _dragFrom.X, top = _dragWebcam.Top + pt.Y - _dragFrom.Y;
+            St.WebcamX = Math.Clamp((left - margin) / Math.Max(1, w - 2 * margin - _dragWebcam.Width), 0, 1);
+            St.WebcamY = Math.Clamp((top - margin) / Math.Max(1, h - 2 * margin - _dragWebcam.Height), 0, 1);
+            PushToPreview(cameraChanged: false);
+            UpdateOverlay();
+            MarkDirty();
+            return;
+        }
+
+        if (Timeline.SelectedNote is not { } a || _dragOrig is not { } o) return;
+        // The drag in source pixels, through the camera at the playhead.
+        var (m, _, _) = OutputGeometry();
+        if (!m.TryInvert(out var inv)) return;
+        var s0 = inv.MapPoint(_dragFrom);
+        var s1 = inv.MapPoint(pt);
+        double dx = s1.X - s0.X, dy = s1.Y - s0.Y;
+        if (_drag == PreviewDrag.NoteSize)
+        {
+            a.W = Math.Max(16, o.W + dx);
+            a.H = Math.Max(16, o.H + dy);
+        }
+        else
+        {
+            a.X = Math.Clamp(o.X + dx, -o.W / 2, _p.Width - o.W / 2);
+            a.Y = Math.Clamp(o.Y + dy, -o.H / 2, _p.Height - o.H / 2);
+            a.X2 = o.X2 + (a.X - o.X);
+            a.Y2 = o.Y2 + (a.Y - o.Y);
+        }
+        a.Auto = false; // hand-placed: survives regeneration
+        PushToPreview(cameraChanged: false);
+        UpdateOverlay();
+        MarkDirty();
+    }
+
+    private void Preview_Up(object sender, MouseButtonEventArgs e)
+    {
+        if (_drag == PreviewDrag.None) return;
+        _drag = PreviewDrag.None;
+        _dragOrig = null;
+        PreviewHost.ReleaseMouseCapture();
+        if (TabMedia.IsChecked == true) RefreshMedia();
+    }
+
+    /// <summary>Hover feedback: an outline and a move / resize cursor.</summary>
+    private void HoverAt(SKPoint pt)
+    {
+        Rect? hover = null;
+        Cursor cursor = Cursors.Arrow;
+        if (SizeGrip() is { } grip && grip.Contains(pt))
+        {
+            cursor = Cursors.SizeNWSE;
+        }
+        else if (HitNote(pt) is { } note)
+        {
+            cursor = Cursors.SizeAll;
+            if (note != Timeline.SelectedNote)
+            {
+                var (m, u, card) = OutputGeometry();
+                hover = ToPreview(AnnotationPainter.Bounds(note, m, u, card));
+            }
+        }
+        else if (WebcamVisible() && WebcamRect().Contains(pt))
+        {
+            cursor = Cursors.SizeAll;
+            hover = ToPreview(WebcamRect());
+        }
+        else if (Timeline.Selected != null && Timeline.SelectedNote == null)
+        {
+            cursor = Cursors.Cross; // click aims the selected zoom
+        }
+        PreviewHost.Cursor = cursor;
+        Place(HoverOutline, hover, 3);
+    }
+
+    private static void Place(FrameworkElement el, Rect? r, double pad)
+    {
+        if (r is not { } rect) { el.Visibility = Visibility.Collapsed; return; }
+        rect.Inflate(pad, pad);
+        System.Windows.Controls.Canvas.SetLeft(el, rect.Left);
+        System.Windows.Controls.Canvas.SetTop(el, rect.Top);
+        el.Width = rect.Width;
+        el.Height = rect.Height;
+        el.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>Outlines the selected annotation on the preview while it's on screen.</summary>
+    private void UpdateOverlay()
+    {
+        if (Preview.ActualWidth <= 0 || _closed) return;
+        Rect? sel = null;
+        if (Timeline.SelectedNote is { } a && NoteVisible(a))
+        {
+            var (m, u, card) = OutputGeometry();
+            sel = ToPreview(AnnotationPainter.Bounds(a, m, u, card));
+        }
+        else if (_drag == PreviewDrag.Webcam)
+        {
+            sel = ToPreview(WebcamRect());
+        }
+        Place(SelOutline, sel, 4);
+        if (_drag == PreviewDrag.Webcam) HoverOutline.Visibility = Visibility.Collapsed;
+        if (SizeGrip() is { } grip)
+        {
+            var g = ToPreview(grip);
+            System.Windows.Controls.Canvas.SetLeft(SelHandle, g.Left + g.Width / 2 - SelHandle.Width / 2);
+            System.Windows.Controls.Canvas.SetTop(SelHandle, g.Top + g.Height / 2 - SelHandle.Height / 2);
+            SelHandle.Visibility = Visibility.Visible;
+        }
+        else SelHandle.Visibility = Visibility.Collapsed;
+    }
+
+    private void OnNoteSelected(Annotation? note)
+    {
+        RefreshNote();
+        // Show it: bring the playhead into the annotation's time if it's elsewhere.
+        if (note != null && (_player.Position < note.Start || _player.Position > note.End) && !_player.IsPlaying)
+            _player.Seek(note.Start + Math.Min(400, (note.End - note.Start) / 2));
+        UpdateOverlay();
     }
 
     private void JumpSel_Click(object sender, RoutedEventArgs e)
@@ -365,7 +712,8 @@ public partial class EditorView : UserControl
 
     private void Tab_Changed(object sender, RoutedEventArgs e)
     {
-        if (BgPanel == null || FramePanel == null || CursorPanel == null || ZoomPanel == null || NotesPanel == null || LooksPanel == null) return;
+        if (BgPanel == null || FramePanel == null || CursorPanel == null || ZoomPanel == null || NotesPanel == null || LooksPanel == null || MediaPanel == null) return;
+        MediaPanel.Visibility = TabMedia.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         NotesPanel.Visibility = TabNotes.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         LooksPanel.Visibility = TabLooks.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         BgPanel.Visibility = TabBg.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
@@ -373,7 +721,7 @@ public partial class EditorView : UserControl
         CursorPanel.Visibility = TabCursor.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         ZoomPanel.Visibility = TabZoom.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         if (sender is RadioButton { IsChecked: true } tab)
-            InspectorTitle.Text = tab == TabBg ? "Background" : tab == TabNotes ? "Annotations" : tab.Content as string;
+            InspectorTitle.Text = tab == TabBg ? "Background" : tab == TabNotes ? "Annotations" : tab == TabMedia ? "Camera and audio" : tab.Content as string;
     }
 
     // ---------------------------------------------------------------- style
@@ -621,9 +969,12 @@ public partial class EditorView : UserControl
             Timeline.Playhead = pos;
             TimeNow.Text = TimelineControl.FormatTime(pos);
             ZoomNow.Text = $"{_camera.At(pos).scale:0.0}×";
+            _audio?.Sync(pos, player.IsPlaying);
+            UpdateOverlay();
         };
         player.PlayingChanged += playing =>
         {
+            _audio?.Sync(player.Position, playing);
             PlayIcon.Text = playing ? "" : "";
             PlayIcon.Margin = playing ? new Thickness(0) : new Thickness(2, 0, 0, 0);
         };
@@ -779,6 +1130,7 @@ public partial class EditorView : UserControl
         Timeline.InvalidateVisual();
         RefreshNote();
         PushToPreview(cameraChanged: false);
+        UpdateOverlay();
         MarkDirty();
     }
 
@@ -818,28 +1170,6 @@ public partial class EditorView : UserControl
         if (kind == AnnotationKind.Callout) { NoteText.Focus(); NoteText.SelectAll(); }
     }
 
-    private void MoveNote(Annotation a, double x, double y)
-    {
-        switch (a.Kind)
-        {
-            case AnnotationKind.Highlight:
-            case AnnotationKind.Spotlight:
-                a.X = Math.Clamp(x - a.W / 2, -a.W / 2, _p.Width - a.W / 2);
-                a.Y = Math.Clamp(y - a.H / 2, -a.H / 2, _p.Height - a.H / 2);
-                break;
-            case AnnotationKind.Arrow:
-                // Keep the arrow's direction and length; move its tip.
-                double dx = a.X2 - a.X, dy = a.Y2 - a.Y;
-                a.X = x; a.Y = y; a.X2 = x + dx; a.Y2 = y + dy;
-                break;
-            default:
-                a.X = x; a.Y = y;
-                break;
-        }
-        a.Auto = false; // hand-placed: survives regeneration
-        NotesEdited();
-    }
-
     private void DeleteNote_Click(object sender, RoutedEventArgs e) => Timeline.DeleteSelectedNote();
 
     private void NoteText_Changed(object sender, TextChangedEventArgs e)
@@ -871,6 +1201,95 @@ public partial class EditorView : UserControl
         if (Timeline.SelectedNote is not { } n) return;
         n.End = Math.Max(_player.Position, n.Start + 200);
         NotesEdited();
+    }
+
+    // ---------------------------------------------------------------- camera and audio
+
+    private void RefreshMedia()
+    {
+        bool was = _loading;
+        _loading = true;
+        bool cam = _p.Webcam != null;
+        bool audio = _p.Audio is { Count: > 0 };
+        NoMedia.Visibility = cam || audio ? Visibility.Collapsed : Visibility.Visible;
+        CameraOptions.Visibility = cam ? Visibility.Visible : Visibility.Collapsed;
+        AudioOptions.Visibility = audio ? Visibility.Visible : Visibility.Collapsed;
+
+        WebcamToggle.IsChecked = St.ShowWebcam;
+        CamCircle.IsChecked = St.WebcamShape == WebcamShape.Circle;
+        CamSquare.IsChecked = St.WebcamShape == WebcamShape.Square;
+        CamOval.IsChecked = St.WebcamShape == WebcamShape.Oval;
+        WebcamSizeSlider.Value = St.WebcamSize;
+        WebcamSizeVal.Text = $"{St.WebcamSize * 100:0}%";
+        WebcamMirrorToggle.IsChecked = St.WebcamMirror;
+
+        AudioRows.Children.Clear();
+        foreach (var track in _p.Audio ?? new())
+        {
+            var t = track;
+            var row = new StackPanel { Margin = new Thickness(0, 0, 0, 12) };
+            var mute = new CheckBox { Style = (System.Windows.Style)FindResource("Switch"), IsChecked = !t.Muted, Margin = new Thickness(0) };
+            var label = new StackPanel();
+            label.Children.Add(new TextBlock { Text = t.Label, FontWeight = FontWeights.Medium });
+            label.Children.Add(new TextBlock { Text = File.Exists(t.File) ? Path.GetFileName(t.File) : "File missing", Style = (System.Windows.Style)FindResource("Hint") });
+            mute.Content = label;
+            var val = new TextBlock { Style = (System.Windows.Style)FindResource("Value"), Text = $"{t.Volume * 100:0}%" };
+            var slider = new Slider { Minimum = 0, Maximum = 1, Value = t.Volume, IsEnabled = !t.Muted };
+            mute.Click += (_, _) =>
+            {
+                t.Muted = mute.IsChecked != true;
+                slider.IsEnabled = !t.Muted;
+                _audio.ApplyVolumes();
+                MarkDirty();
+            };
+            slider.ValueChanged += (_, e) =>
+            {
+                if (_loading) return;
+                t.Volume = (float)Math.Round(e.NewValue, 2);
+                val.Text = $"{t.Volume * 100:0}%";
+                _audio.ApplyVolumes();
+                MarkDirty();
+            };
+            var volRow = new DockPanel { Margin = new Thickness(0, 6, 0, 0) };
+            DockPanel.SetDock(val, Dock.Right);
+            volRow.Children.Add(val);
+            volRow.Children.Add(new TextBlock { Text = "Volume", Foreground = (Brush)FindResource("Subtext") });
+            row.Children.Add(mute);
+            row.Children.Add(volRow);
+            row.Children.Add(slider);
+            AudioRows.Children.Add(row);
+        }
+        _loading = was;
+    }
+
+    private void Webcam_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_loading || WebcamMirrorToggle == null || WebcamSizeVal == null) return;
+        St.ShowWebcam = WebcamToggle.IsChecked == true;
+        St.WebcamSize = (float)WebcamSizeSlider.Value;
+        St.WebcamMirror = WebcamMirrorToggle.IsChecked == true;
+        WebcamSizeVal.Text = $"{St.WebcamSize * 100:0}%";
+        PushToPreview(cameraChanged: false);
+        MarkDirty();
+    }
+
+    private void WebcamShape_Checked(object sender, RoutedEventArgs e)
+    {
+        if (_loading || sender is not RadioButton rb || !Enum.TryParse<WebcamShape>((string)rb.Tag, out var shape)) return;
+        St.WebcamShape = shape;
+        PushToPreview(cameraChanged: false);
+        MarkDirty();
+    }
+
+    private void WebcamCorner_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not RadioButton rb) return;
+        var xy = ((string)rb.Tag).Split(',');
+        St.WebcamX = float.Parse(xy[0], System.Globalization.CultureInfo.InvariantCulture);
+        St.WebcamY = float.Parse(xy[1], System.Globalization.CultureInfo.InvariantCulture);
+        rb.IsChecked = false; // a one-shot action, not a mode
+        PushToPreview(cameraChanged: false);
+        MarkDirty();
     }
 
     // ---------------------------------------------------------------- looks

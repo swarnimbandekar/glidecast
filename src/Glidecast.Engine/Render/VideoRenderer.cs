@@ -104,15 +104,27 @@ public static class VideoRenderer
             $"-i \"{p.SourceVideo}\" -fps_mode passthrough -f rawvideo -pix_fmt bgra -s {w}x{h} -");
         var dec = FFmpeg.Start(decArgs, redirectIn: false, redirectOut: true);
 
-        // Encoder.
+        // Webcam: a second forward-only decoder, addressed by its own capture timestamps.
+        var wc = p.Webcam is { Width: > 0, Height: > 0, FrameTimes.Count: > 0 } cam && File.Exists(cam.Video) && (style?.ShowWebcam ?? true) ? cam : null;
+        var wcFrames = wc != null ? FrameClock.FromTimes(wc.FrameTimes, wc.Fps) : null;
+        var wcDec = wc != null
+            ? FFmpeg.Start(string.Create(inv, $"-i \"{wc.Video}\" -fps_mode passthrough -f rawvideo -pix_fmt bgra -s {wc.Width}x{wc.Height} -"), redirectIn: false, redirectOut: true)
+            : null;
+
+        // Encoder, with the recorded audio mixed in.
         string encArgs = string.Create(inv,
-            $"-y -f rawvideo -pixel_format bgra -video_size {outW}x{outH} -framerate {fps} -i - -an {Encoders.Args(encoder, options.Quality)} -movflags +faststart \"{outPath}\"");
+            $"-y -f rawvideo -pixel_format bgra -video_size {outW}x{outH} -framerate {fps} -i - {AudioArgs(p)} {Encoders.Args(encoder, options.Quality)} -movflags +faststart \"{outPath}\"");
         var enc = FFmpeg.Start(encArgs, redirectIn: true, redirectOut: false);
 
         var srcBuf = new byte[w * h * 4];
         var srcs = Enumerable.Range(0, workers).Select(_ => new byte[w * h * 4]).ToArray();
         var dsts = Enumerable.Range(0, workers).Select(_ => new byte[outW * outH * 4]).ToArray();
         var times = new double[workers];
+        var wcBuf = wc != null ? new byte[wc.Width * wc.Height * 4] : null;
+        var wcs = Enumerable.Range(0, workers).Select(_ => wcBuf != null ? new byte[wcBuf.Length] : null).ToArray();
+        var hasWc = new bool[workers];
+        int wcIndex = -1;
+        bool wcEnded = false;
         var decOut = dec.StandardOutput.BaseStream;
         var encIn = enc.StandardInput.BaseStream;
 
@@ -141,10 +153,27 @@ public static class VideoRenderer
                     if (srcIndex < 0) break; // empty video
                     Buffer.BlockCopy(srcBuf, 0, srcs[n], 0, srcBuf.Length);
                     times[n] = tMs;
+
+                    // The bubble shows from the webcam's first frame to just past its last.
+                    hasWc[n] = false;
+                    if (wcFrames != null && tMs >= wcFrames.TimeOf(0) && tMs <= wcFrames.TimeOf(wcFrames.Count - 1) + 500)
+                    {
+                        int wcWant = wcFrames.FrameAt(tMs);
+                        while (!wcEnded && wcIndex < wcWant)
+                        {
+                            if (ReadFull(wcDec!.StandardOutput.BaseStream, wcBuf!)) wcIndex++;
+                            else wcEnded = true;
+                        }
+                        if (wcIndex >= 0)
+                        {
+                            Buffer.BlockCopy(wcBuf!, 0, wcs[n]!, 0, wcBuf!.Length);
+                            hasWc[n] = true;
+                        }
+                    }
                 }
                 if (n == 0) break;
                 Parallel.For(0, n, new ParallelOptions { MaxDegreeOfParallelism = workers },
-                    i => comps[i].RenderInto(srcs[i], times[i], dsts[i]));
+                    i => comps[i].RenderInto(srcs[i], times[i], dsts[i], hasWc[i] ? wcs[i] : null));
                 for (int i = 0; i < n; i++)
                 {
                     try { encIn.Write(dsts[i], 0, dsts[i].Length); }
@@ -158,6 +187,7 @@ public static class VideoRenderer
             foreach (var c in comps) c.Dispose();
             try { encIn.Flush(); encIn.Close(); } catch { }
             TryKill(dec);
+            if (wcDec != null) TryKill(wcDec);
             if (cancelled) TryKill(enc);
             enc.WaitForExit(60000);
             dec.WaitForExit(10000);
@@ -173,6 +203,22 @@ public static class VideoRenderer
             throw new EncoderFailedException($"ffmpeg encode failed ({Encoders.Label(encoder)}): " + FFmpeg.LastError);
         }
         progress?.Invoke(1.0);
+    }
+
+    /// <summary>ffmpeg arguments that mix the project's audio tracks (each
+    /// starts at project time 0) into the output, or drop audio if there is none.</summary>
+    internal static string AudioArgs(Project p)
+    {
+        var tracks = (p.Audio ?? new()).Where(a => !a.Muted && a.Volume > 0.001f && File.Exists(a.File)).ToList();
+        if (tracks.Count == 0) return "-an";
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        string inputs = string.Join(" ", tracks.Select(a => $"-i \"{a.File}\""));
+        // amix divides every input by the input count; scale back up so levels match the preview.
+        string chains = string.Join(";", tracks.Select((a, i) => string.Create(inv, $"[{i + 1}:a]volume={a.Volume * tracks.Count:0.###}[a{i}]")));
+        string mix = tracks.Count == 1 ? "[a0]anull[aout]"
+            : string.Concat(Enumerable.Range(0, tracks.Count).Select(i => $"[a{i}]")) + $"amix=inputs={tracks.Count}:duration=longest:dropout_transition=0[aout]";
+        string t = string.Create(inv, $"{p.DurationMs / 1000.0:0.###}");
+        return $"{inputs} -filter_complex \"{chains};{mix}\" -map 0:v -map \"[aout]\" -c:a aac -b:a 192k -t {t}";
     }
 
     private static void TryKill(System.Diagnostics.Process p)

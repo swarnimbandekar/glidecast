@@ -33,6 +33,71 @@ public static class AnnotationPainter
         }
     }
 
+    /// <summary>The area an annotation covers in output pixels when fully shown,
+    /// for picking and outlining it in the editor. Same arguments as <see cref="Draw"/>.</summary>
+    public static SKRect Bounds(Annotation a, SKMatrix m, float u, SKRect visible)
+    {
+        switch (a.Kind)
+        {
+            case AnnotationKind.Highlight:
+            case AnnotationKind.Spotlight:
+                return Box(a, m);
+            case AnnotationKind.Step:
+            {
+                var c = m.MapPoint(new SKPoint((float)a.X, (float)a.Y));
+                float r = 17 * u;
+                return new SKRect(c.X - r, c.Y - r, c.X + r, c.Y + r);
+            }
+            case AnnotationKind.Arrow:
+            {
+                var tip = m.MapPoint(new SKPoint((float)a.X, (float)a.Y));
+                var tail = m.MapPoint(new SKPoint((float)a.X2, (float)a.Y2));
+                var r = new SKRect(Math.Min(tip.X, tail.X), Math.Min(tip.Y, tail.Y), Math.Max(tip.X, tail.X), Math.Max(tip.Y, tail.Y));
+                r.Inflate(12 * u, 12 * u);
+                return r;
+            }
+            default:
+                return CalloutRect(a, m, u, visible, out _);
+        }
+    }
+
+    /// <summary>True if output point p is on the annotation (arrows by distance to the shaft).</summary>
+    public static bool Hit(Annotation a, SKMatrix m, float u, SKRect visible, SKPoint p, float slop)
+    {
+        if (a.Kind != AnnotationKind.Arrow)
+        {
+            var r = Bounds(a, m, u, visible);
+            r.Inflate(slop, slop);
+            return r.Contains(p);
+        }
+        var tip = m.MapPoint(new SKPoint((float)a.X, (float)a.Y));
+        var tail = m.MapPoint(new SKPoint((float)a.X2, (float)a.Y2));
+        var d = tip - tail;
+        float len2 = d.X * d.X + d.Y * d.Y;
+        float f = len2 <= 0 ? 0 : Math.Clamp(((p.X - tail.X) * d.X + (p.Y - tail.Y) * d.Y) / len2, 0, 1);
+        var near = new SKPoint(tail.X + d.X * f, tail.Y + d.Y * f);
+        return SKPoint.Distance(near, p) <= 10 * u + slop;
+    }
+
+    private static SKPaint CalloutFont(float u, float k) => new()
+    {
+        IsAntialias = true, Color = SKColors.White.WithAlpha((byte)(255 * k)), TextSize = 19 * u,
+        Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold),
+    };
+
+    // Below the anchor if it fits, else above; slid horizontally to stay on screen.
+    private static SKRect CalloutRect(Annotation a, SKMatrix m, float u, SKRect visible, out bool below)
+    {
+        var anchor = m.MapPoint(new SKPoint((float)a.X, (float)a.Y));
+        using var font = CalloutFont(u, 1);
+        float padX = 16 * u, padY = 11 * u, ptr = 9 * u, barW = 4 * u;
+        float w = font.MeasureText(a.Text ?? "") + padX * 2 + barW, h = font.TextSize + padY * 2;
+        below = anchor.Y + ptr + h + 6 * u < visible.Bottom;
+        float top = below ? anchor.Y + ptr : anchor.Y - ptr - h;
+        float left = Math.Clamp(anchor.X - w / 2, visible.Left + 8 * u, Math.Max(visible.Left + 8 * u, visible.Right - w - 8 * u));
+        return new SKRect(left, top, left + w, top + h);
+    }
+
     /// <summary>Animation progress: 0→1 while appearing, 1 while shown, →0 while leaving.</summary>
     private static bool Visible(Annotation a, double t, out float k)
     {
@@ -155,21 +220,11 @@ public static class AnnotationPainter
     {
         if (string.IsNullOrWhiteSpace(a.Text)) return;
         var anchor = m.MapPoint(new SKPoint((float)a.X, (float)a.Y));
-        using var font = new SKPaint
-        {
-            IsAntialias = true, Color = SKColors.White.WithAlpha((byte)(255 * k)), TextSize = 19 * u,
-            Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold),
-        };
-        float padX = 16 * u, padY = 11 * u, ptr = 9 * u, barW = 4 * u;
-        float tw = font.MeasureText(a.Text);
-        float w = tw + padX * 2 + barW, h = font.TextSize + padY * 2;
-
-        // Below the anchor if it fits, else above; slide horizontally to stay on screen.
-        bool below = anchor.Y + ptr + h + 6 * u < visible.Bottom;
-        float top = below ? anchor.Y + ptr : anchor.Y - ptr - h;
-        float left = Math.Clamp(anchor.X - w / 2, visible.Left + 8 * u, Math.Max(visible.Left + 8 * u, visible.Right - w - 8 * u));
+        using var font = CalloutFont(u, k);
+        float padX = 16 * u, ptr = 9 * u, barW = 4 * u;
+        var rect = CalloutRect(a, m, u, visible, out bool below);
         float rise = (1 - k) * 8 * u * (below ? 1 : -1);
-        var rect = new SKRect(left, top + rise, left + w, top + h + rise);
+        rect.Offset(0, rise);
         float radius = 10 * u;
 
         using var path = new SKPath();

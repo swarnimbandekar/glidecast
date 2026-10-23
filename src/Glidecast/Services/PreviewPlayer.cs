@@ -27,6 +27,11 @@ public sealed class PreviewPlayer : IDisposable
     private readonly FrameReader _reader;
     private readonly Compositor _comp;
     private readonly byte[] _src, _dst;
+    // Webcam (optional): its own reader on its own capture clock.
+    private readonly FrameReader? _wcReader;
+    private readonly FrameClock? _wcFrames;
+    private readonly byte[]? _wc;
+    private bool _haveWc;
 
     // Pending requests (guarded by _gate).
     private double? _seekTo;
@@ -67,6 +72,12 @@ public sealed class PreviewPlayer : IDisposable
         _comp = new Compositor(p, p.BuildCamera(), p.Style?.Clone(), OutWidth, OutHeight, _reader.Width, _reader.Height);
         _src = new byte[_reader.FrameBytes];
         _dst = new byte[OutWidth * OutHeight * 4];
+        if (p.Webcam is { Width: > 0, Height: > 0, FrameTimes.Count: > 0 } wc && System.IO.File.Exists(wc.Video))
+        {
+            _wcFrames = FrameClock.FromTimes(wc.FrameTimes, wc.Fps);
+            _wcReader = new FrameReader(wc.Video, _wcFrames, wc.Width, wc.Height);
+            _wc = new byte[_wcReader.FrameBytes];
+        }
         Bitmap = new WriteableBitmap(OutWidth, OutHeight, 96, 96, PixelFormats.Pbgra32, null);
 
         _seekTo = 0;
@@ -140,12 +151,13 @@ public sealed class PreviewPlayer : IDisposable
                 {
                     Position = t0;
                     _reader.EndStream();
+                    _wcReader?.EndStream();
                 }
 
                 if (wantPlay != IsPlaying)
                 {
                     IsPlaying = wantPlay;
-                    if (!wantPlay) _reader.EndStream();
+                    if (!wantPlay) { _reader.EndStream(); _wcReader?.EndStream(); }
                     bool playing = wantPlay;
                     _ui.BeginInvoke(() => PlayingChanged?.Invoke(playing));
                 }
@@ -166,6 +178,15 @@ public sealed class PreviewPlayer : IDisposable
                     while (_reader.StreamIndex < want)
                         if (!_reader.ReadNext(_src)) break;
                     if (_reader.StreamIndex >= 0) haveFrame = true;
+                    if (WebcamShows(t))
+                    {
+                        if (!_wcReader!.Streaming) _wcReader.BeginStream(_wcFrames!.FrameAt(t));
+                        int wcWant = _wcFrames!.FrameAt(t);
+                        while (_wcReader.StreamIndex < wcWant)
+                            if (!_wcReader.ReadNext(_wc!)) break;
+                        _haveWc = _wcReader.StreamIndex >= 0;
+                    }
+                    else _haveWc = false;
                     if (haveFrame) Present(t);
                     if (t >= _p.DurationMs)
                     {
@@ -180,6 +201,7 @@ public sealed class PreviewPlayer : IDisposable
 
                 if (seek is { } ts)
                 {
+                    _haveWc = WebcamShows(ts) && _wcReader!.ReadFrame(_wcFrames!.FrameAt(ts), _wc!);
                     if (_reader.ReadFrame(Frames.FrameAt(ts), _src))
                     {
                         haveFrame = true;
@@ -206,13 +228,21 @@ public sealed class PreviewPlayer : IDisposable
         finally
         {
             _reader.Dispose();
+            _wcReader?.Dispose();
             _comp.Dispose();
         }
     }
 
+    /// <summary>The bubble shows from the webcam's first frame to just past its last.</summary>
+    private bool WebcamShows(double t) =>
+        _wcFrames != null && t >= _wcFrames.TimeOf(0) && t <= _wcFrames.TimeOf(_wcFrames.Count - 1) + 500;
+
+    /// <summary>The project has a webcam take that can be previewed.</summary>
+    public bool HasWebcam => _wcReader != null;
+
     private void Present(double t)
     {
-        _comp.RenderInto(_src, t, _dst);
+        _comp.RenderInto(_src, t, _dst, _haveWc ? _wc : null);
         Position = t;
         try
         {

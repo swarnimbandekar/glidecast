@@ -2,6 +2,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using Glidecast.App.Services;
@@ -9,7 +10,7 @@ using Glidecast.App.Services;
 namespace Glidecast.App.Views;
 
 /// <summary>Floating toolbar shown during a take: 3-2-1 countdown, live elapsed
-/// timer, Stop / Discard. Excluded from the capture itself.</summary>
+/// timer, Stop / Discard, and F9 to mark a moment. Excluded from the capture itself.</summary>
 public partial class RecordingBar : Window
 {
     private readonly RecordingSession _session;
@@ -19,30 +20,70 @@ public partial class RecordingBar : Window
     private readonly TaskCompletionSource<string?> _done = new();
     private int _countdown = 3;
     private bool _recording;
+    private const int MarkHotkeyId = 0x4743;
+    private HwndSource? _hwnd;
+    private readonly DispatcherTimer _markFlash = new() { Interval = TimeSpan.FromMilliseconds(900) };
 
     /// <summary>Resolves to the saved project.json, or null if discarded.</summary>
     public Task<string?> Completion => _done.Task;
 
-    public RecordingBar(string dir, System.Drawing.Rectangle? region, double fps)
+    private readonly RecordOptions _options;
+    private readonly CameraBubbleWindow? _bubble;
+
+    /// <param name="bubble">The floating camera from the pre-record step; its feed is recorded and it closes with the take.</param>
+    public RecordingBar(string dir, System.Drawing.Rectangle? region, RecordOptions options, string label, CameraBubbleWindow? bubble)
     {
         InitializeComponent();
-        _session = new RecordingSession(dir);
+        _options = options;
+        _bubble = bubble;
+        _session = new RecordingSession(dir, options, bubble?.Feed);
         _region = region;
-        _fps = fps;
-        Info.Text = region is { } r ? $"Region {r.Width & ~1}×{r.Height & ~1}" : "Full screen";
-        Clock.Text = "3";
+        _fps = options.Fps60 ? 60 : 30;
+        _countdown = Math.Max(0, options.Countdown);
+        var bits = new List<string> { label };
+        if (bubble?.Feed != null) bits.Add("camera");
+        if (options.Microphone) bits.Add("mic");
+        if (options.SystemAudio) bits.Add("sound");
+        Info.Text = string.Join(" · ", bits);
+        Clock.Text = _countdown > 0 ? _countdown.ToString() : "0:00";
         StopButton.IsEnabled = false;
         _timer.Tick += Tick;
+        _markFlash.Tick += (_, _) => { _markFlash.Stop(); RecLabel.Text = "REC"; };
 
-        SourceInitialized += (_, _) => NativeMethods.ExcludeFromCapture(this);
+        SourceInitialized += (_, _) =>
+        {
+            NativeMethods.ExcludeFromCapture(this);
+            _hwnd = HwndSource.FromHwnd(new WindowInteropHelper(this).Handle);
+            _hwnd.AddHook(WndProc);
+            _session.MarkHotkey = NativeMethods.RegisterHotKey(_hwnd.Handle, MarkHotkeyId, 0, 0x78 /* VK_F9 */);
+            MarkHint.Visibility = _session.MarkHotkey ? Visibility.Visible : Visibility.Collapsed;
+        };
+        Closed += (_, _) => { if (_hwnd != null) NativeMethods.UnregisterHotKey(_hwnd.Handle, MarkHotkeyId); };
         Loaded += (_, _) =>
         {
             var wa = SystemParameters.WorkArea;
             Left = wa.Left + (wa.Width - ActualWidth) / 2;
             Top = wa.Top + 2;
-            ShowCountdown();
+            if (_countdown > 0) ShowCountdown();
+            else StartTake();
             _timer.Start();
         };
+    }
+
+    private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (msg == NativeMethods.WM_HOTKEY && wParam.ToInt32() == MarkHotkeyId)
+        {
+            handled = true;
+            if (_recording)
+            {
+                _session.Mark();
+                RecLabel.Text = "MARKED";
+                _markFlash.Stop();
+                _markFlash.Start();
+            }
+        }
+        return IntPtr.Zero;
     }
 
     private Window? _countdownWindow;
@@ -102,27 +143,41 @@ public partial class RecordingBar : Window
             if (ticks % 5 != 0) return;
             _countdown--;
             if (_countdown > 0) { Clock.Text = _countdown.ToString(); UpdateCountdown(); return; }
-            _countdownWindow?.Close();
-            _countdownWindow = null;
-            try
-            {
-                _session.Start(_region, _fps);
-            }
-            catch (Exception ex)
-            {
-                _timer.Stop();
-                MessageBox.Show("Could not start recording: " + ex.Message, "Glidecast");
-                Finish(null);
-                return;
-            }
+            if (!StartTake()) return;
+        }
+        var t = _session.Elapsed;
+        Clock.Text = $"{(int)t.TotalMinutes}:{t.Seconds:00}";
+    }
+
+    private bool StartTake()
+    {
+        _countdownWindow?.Close();
+        _countdownWindow = null;
+        try
+        {
+            _session.Start(_region, _fps);
+        }
+        catch (Exception ex)
+        {
+            _timer.Stop();
+            MessageBox.Show("Could not start recording: " + ex.Message, "Glidecast");
+            Finish(null);
+            return false;
+        }
+        {
             _recording = true;
             StopButton.IsEnabled = true;
+            if (_session.Warnings.Count > 0)
+            {
+                Info.Text += " · " + (_session.Warnings.Count == 1 ? "1 source failed" : $"{_session.Warnings.Count} sources failed");
+                Info.Foreground = (System.Windows.Media.Brush)FindResource("Danger");
+                Info.ToolTip = string.Join(Environment.NewLine, _session.Warnings);
+            }
             RecLabel.Text = "REC";
             var pulse = new DoubleAnimation(1, 0.25, TimeSpan.FromMilliseconds(700)) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever };
             Dot.BeginAnimation(OpacityProperty, pulse);
         }
-        var t = _session.Elapsed;
-        Clock.Text = $"{(int)t.TotalMinutes}:{t.Seconds:00}";
+        return true;
     }
 
     private async void Stop_Click(object sender, RoutedEventArgs e)
@@ -133,6 +188,8 @@ public partial class RecordingBar : Window
         Clock.Text = "Saving…";
         var barRect = NativeMethods.ScreenRect(Chrome);
         barRect.Inflate(4, 4);
+        // Wherever the camera was dragged to during the take is where it goes in the video.
+        _bubble?.SavePlacement(_options);
         try
         {
             await Task.Run(() => _session.Stop(barRect));
@@ -160,6 +217,7 @@ public partial class RecordingBar : Window
     private void Finish(string? projectFile)
     {
         _countdownWindow?.Close();
+        _bubble?.Close();
         _done.TrySetResult(projectFile);
         Close();
     }

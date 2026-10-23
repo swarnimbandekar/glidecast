@@ -30,6 +30,8 @@
                 <TextBlock x:Name="SourceInfo" FontSize="12" Foreground="{StaticResource Muted}" VerticalAlignment="Center" Typography.NumeralAlignment="Tabular" />
             </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0">
+                <Button x:Name="UndoButton" Style="{StaticResource IconButton}" Content="&#xE7A7;" FontSize="13" Click="Undo_Click" ToolTip="Undo (Ctrl+Z)" IsEnabled="False" />
+                <Button x:Name="RedoButton" Style="{StaticResource IconButton}" Content="&#xE7A6;" FontSize="13" Click="Redo_Click" ToolTip="Redo (Ctrl+Y)" IsEnabled="False" Margin="0,0,14,0" />
                 <Ellipse x:Name="SaveDot" Width="6" Height="6" Fill="{StaticResource Success}" VerticalAlignment="Center" Margin="0,0,7,0" />
                 <TextBlock x:Name="SaveState" Text="Saved" FontSize="12" Foreground="{StaticResource Subtext}" VerticalAlignment="Center" Margin="0,0,16,0" />
                 <Button AutomationProperties.Name="Export" Style="{StaticResource PrimaryButton}" Padding="14,0" Height="30" Click="Export_Click" ToolTip="Export video (Ctrl+E)">
@@ -59,7 +61,14 @@
                 </Grid.RowDefinitions>
                 <Border x:Name="StageFrame" CornerRadius="8" Background="#0A0A0B" HorizontalAlignment="Center" VerticalAlignment="Center"
                         Effect="{StaticResource SoftShadow}" ClipToBounds="True">
-                    <Image x:Name="Preview" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" MouseLeftButtonDown="Preview_Click" />
+                    <Grid x:Name="PreviewHost" Background="Transparent" MouseLeftButtonDown="Preview_Down" MouseMove="Preview_Move" MouseLeftButtonUp="Preview_Up">
+                        <Image x:Name="Preview" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" />
+                        <Canvas x:Name="Overlay" IsHitTestVisible="False" ClipToBounds="True">
+                            <Rectangle x:Name="SelOutline" Stroke="{StaticResource Accent}" StrokeThickness="1.5" StrokeDashArray="4 3" RadiusX="6" RadiusY="6" Visibility="Collapsed" />
+                            <Rectangle x:Name="HoverOutline" Stroke="#99FFFFFF" StrokeThickness="1" RadiusX="6" RadiusY="6" Visibility="Collapsed" />
+                            <Border x:Name="SelHandle" Width="11" Height="11" CornerRadius="2" Background="White" BorderBrush="{StaticResource Accent}" BorderThickness="2" Visibility="Collapsed" />
+                        </Canvas>
+                    </Grid>
                 </Border>
 
                 <Grid Grid.Row="1" Margin="0,16,0,0">
@@ -114,7 +123,12 @@
                         <TextBlock Text="Timeline" Style="{StaticResource Title}" FontSize="13" VerticalAlignment="Center" />
                         <TextBlock x:Name="ZoomStats" Style="{StaticResource Hint}" VerticalAlignment="Center" Margin="12,0,0,0" />
                         <TextBlock DockPanel.Dock="Right" Style="{StaticResource Hint}" VerticalAlignment="Center" Foreground="{StaticResource Muted}"
-                                   Text="Space play · ←/→ step · Del delete · double-click lane to add" />
+                                   Text="Space play · ←/→ step · Ctrl+scroll zoom · Ctrl+Z undo" />
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="0,0,16,0" VerticalAlignment="Center">
+                            <Button Style="{StaticResource IconButton}" Content="&#xE71F;" FontSize="12" Width="28" Height="28" Click="TimelineOut_Click" ToolTip="Zoom timeline out (Ctrl+−)" />
+                            <Button Style="{StaticResource IconButton}" Content="&#xE8A3;" FontSize="12" Width="28" Height="28" Click="TimelineIn_Click" ToolTip="Zoom timeline in (Ctrl+=)" />
+                            <Button x:Name="TimelineFit" Style="{StaticResource IconButton}" Content="&#xE9A6;" FontSize="12" Width="28" Height="28" Click="TimelineFit_Click" ToolTip="Show the whole recording (Ctrl+0)" IsEnabled="False" />
+                        </StackPanel>
                         <Button DockPanel.Dock="Right" Padding="10,0" MinHeight="28" Height="28" Margin="0,0,16,0" Click="AddZoom_Click" ToolTip="Add a zoom at the playhead (Z)">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Style="{StaticResource Icon}" Text="&#xE710;" FontSize="11" Margin="0,0,7,0" />
@@ -136,6 +150,7 @@
                             <RadioButton x:Name="TabCursor" Content="Cursor" Tag="&#xE7C9;" Style="{StaticResource InspectorTab}" GroupName="tab" Checked="Tab_Changed" />
                             <RadioButton x:Name="TabZoom" Content="Zoom" Tag="&#xE8A3;" Style="{StaticResource InspectorTab}" GroupName="tab" Checked="Tab_Changed" />
                             <RadioButton x:Name="TabNotes" Content="Annotate" Tag="&#xE70F;" Style="{StaticResource InspectorTab}" GroupName="tab" Checked="Tab_Changed" />
+                            <RadioButton x:Name="TabMedia" Content="Media" Tag="&#xE714;" ToolTip="Camera and audio" Style="{StaticResource InspectorTab}" GroupName="tab" Checked="Tab_Changed" />
                             <RadioButton x:Name="TabLooks" Content="Looks" Tag="&#xE790;" Style="{StaticResource InspectorTab}" GroupName="tab" Checked="Tab_Changed" />
                         </StackPanel>
                     </Border>
@@ -391,13 +406,58 @@
                                             <Button Content="Start here" Click="NoteStart_Click" Margin="0,0,6,6" Padding="10,5" ToolTip="Start at the playhead" />
                                             <Button Content="End here" Click="NoteEnd_Click" Margin="0,0,6,6" Padding="10,5" ToolTip="End at the playhead" />
                                         </WrapPanel>
-                                        <TextBlock Style="{StaticResource Hint}" TextWrapping="Wrap" Text="Click the preview to move it. Drag its bar on the Notes lane to retime it." />
+                                        <TextBlock Style="{StaticResource Hint}" TextWrapping="Wrap" Text="Drag it on the preview to move it (boxes resize from their corner). Drag its bar on the Notes lane to move it in time, or its ends to retime it." />
                                     </StackPanel>
                                 </Border>
 
                                 <CheckBox x:Name="NotesToggle" Style="{StaticResource Switch}" Click="Style_Changed" Margin="0,16,0,0">
                                     <TextBlock Text="Show annotations" />
                                 </CheckBox>
+                            </StackPanel>
+
+                            <!-- MEDIA: camera and audio -->
+                            <StackPanel x:Name="MediaPanel" Visibility="Collapsed">
+                                <Border x:Name="NoMedia" Style="{StaticResource Card}" Margin="0,18,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="No camera or audio" FontWeight="SemiBold" />
+                                        <TextBlock Style="{StaticResource Hint}" Margin="0,4,0,0" TextWrapping="Wrap"
+                                                   Text="Turn on system sound, your microphone or your camera on the home screen before you record, and they'll be here." />
+                                    </StackPanel>
+                                </Border>
+
+                                <StackPanel x:Name="CameraOptions">
+                                    <CheckBox x:Name="WebcamToggle" Style="{StaticResource Switch}" Click="Webcam_Changed" Margin="0,18,0,0">
+                                        <TextBlock Text="Show camera" FontWeight="SemiBold" />
+                                    </CheckBox>
+                                    <TextBlock Text="Shape" Style="{StaticResource SectionLabel}" />
+                                    <Border Style="{StaticResource SegmentHost}" HorizontalAlignment="Stretch">
+                                        <UniformGrid Columns="3">
+                                            <RadioButton x:Name="CamCircle" Content="Circle" Tag="Circle" Style="{StaticResource Segment}" GroupName="camshape" Checked="WebcamShape_Checked" />
+                                            <RadioButton x:Name="CamSquare" Content="Square" Tag="Square" Style="{StaticResource Segment}" GroupName="camshape" Checked="WebcamShape_Checked" />
+                                            <RadioButton x:Name="CamOval" Content="Oval" Tag="Oval" Style="{StaticResource Segment}" GroupName="camshape" Checked="WebcamShape_Checked" />
+                                        </UniformGrid>
+                                    </Border>
+                                    <DockPanel Style="{StaticResource Row}" Margin="0,14,0,0"><TextBlock x:Name="WebcamSizeVal" Style="{StaticResource Value}" DockPanel.Dock="Right" /><TextBlock Text="Size" /></DockPanel>
+                                    <Slider x:Name="WebcamSizeSlider" Minimum="0.12" Maximum="0.5" ValueChanged="Webcam_Changed" />
+                                    <CheckBox x:Name="WebcamMirrorToggle" Style="{StaticResource Switch}" Click="Webcam_Changed" Margin="0,10,0,0">
+                                        <StackPanel><TextBlock Text="Mirror" /><TextBlock Text="Flip like a selfie view." Style="{StaticResource Hint}" /></StackPanel>
+                                    </CheckBox>
+                                    <Border Style="{StaticResource SegmentHost}" HorizontalAlignment="Stretch" Margin="0,14,0,0">
+                                        <UniformGrid Columns="4">
+                                            <RadioButton Content="↖" Tag="0,0" Style="{StaticResource Segment}" GroupName="campos" Click="WebcamCorner_Click" ToolTip="Top left" />
+                                            <RadioButton Content="↗" Tag="1,0" Style="{StaticResource Segment}" GroupName="campos" Click="WebcamCorner_Click" ToolTip="Top right" />
+                                            <RadioButton Content="↙" Tag="0,1" Style="{StaticResource Segment}" GroupName="campos" Click="WebcamCorner_Click" ToolTip="Bottom left" />
+                                            <RadioButton Content="↘" Tag="1,1" Style="{StaticResource Segment}" GroupName="campos" Click="WebcamCorner_Click" ToolTip="Bottom right" />
+                                        </UniformGrid>
+                                    </Border>
+                                    <TextBlock Style="{StaticResource Hint}" Margin="0,8,0,0" TextWrapping="Wrap" Text="Snap to a corner, or drag the bubble anywhere on the preview." />
+                                </StackPanel>
+
+                                <StackPanel x:Name="AudioOptions">
+                                    <TextBlock Text="Audio" Style="{StaticResource SectionLabel}" />
+                                    <StackPanel x:Name="AudioRows" />
+                                    <TextBlock Style="{StaticResource Hint}" Margin="0,4,0,0" TextWrapping="Wrap" Text="Tracks play with the preview and are mixed into the export." />
+                                </StackPanel>
                             </StackPanel>
 
                             <!-- LOOKS -->

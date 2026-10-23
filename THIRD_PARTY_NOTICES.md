@@ -10,6 +10,7 @@ third-party software.
 | [.NET runtime & WPF](https://github.com/dotnet/runtime) | MIT | Included in self-contained builds. |
 | [SkiaSharp](https://github.com/mono/SkiaSharp) | MIT | 2D rendering for the compositor. |
 | [Skia](https://skia.org/) (native, via SkiaSharp) | BSD-3-Clause | |
+| [NAudio](https://github.com/naudio/NAudio) 2.2.1 by Mark Heath | MIT | System sound (WASAPI loopback) and microphone capture. |
 | [Inter](https://github.com/rsms/inter) 3.19 by Rasmus Andersson | SIL Open Font License 1.1 | UI typeface, embedded in `Glidecast.exe` (`src/Glidecast/Fonts`). |
 
 ## FFmpeg

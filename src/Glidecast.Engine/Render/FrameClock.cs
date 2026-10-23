@@ -37,6 +37,9 @@ public sealed class FrameClock
         return new FrameClock(p.FrameTimes.ToArray(), p.Fps);
     }
 
+    /// <summary>Clock for another stream captured on the input clock (the webcam).</summary>
+    public static FrameClock FromTimes(IReadOnlyList<double> times, double videoFps) => new(times.ToArray(), videoFps);
+
     /// <summary>The frame on screen at project time t (latest frame captured at or before t).</summary>
     public int FrameAt(double tMs)
     {

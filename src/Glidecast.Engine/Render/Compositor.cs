@@ -8,6 +8,8 @@ public enum BackgroundKind { Gradient, Solid, Image }
 
 public enum LogoCorner { TopLeft, TopRight, BottomLeft, BottomRight }
 
+public enum WebcamShape { Circle, Square, Oval }
+
 /// <summary>Look of the composite. Lengths are in source-screen pixels, so the
 /// same style renders identically at preview and export resolutions. Colors are
 /// "#RRGGBB" strings so the settings round-trip through project.json.</summary>
@@ -48,6 +50,15 @@ public sealed class StyleSettings
     public float LogoSize { get; set; } = 0.1f;          // fraction of output width
     public float LogoOpacity { get; set; } = 0.85f;
 
+    /// <summary>Webcam bubble, drawn in output space (it doesn't zoom with the screen).</summary>
+    public bool ShowWebcam { get; set; } = true;
+    public WebcamShape WebcamShape { get; set; } = WebcamShape.Circle;
+    public float WebcamSize { get; set; } = 0.26f;       // height, fraction of the output's short side
+    /// <summary>Position in the free space: 0 = left / top edge, 1 = right / bottom edge.</summary>
+    public float WebcamX { get; set; }
+    public float WebcamY { get; set; } = 1f;
+    public bool WebcamMirror { get; set; } = true;
+
     public StyleSettings Clone() => (StyleSettings)MemberwiseClone();
 
     public static SKColor ParseColor(string? hex, SKColor fallback) =>
@@ -84,6 +95,7 @@ public sealed class Compositor : IDisposable
     private SKBitmap? _logo;
 
     private CursorTrack? _cursor;
+    private SKBitmap? _webcam;
     private (string? path, float blur) _wallKey;
     private SKBitmap? _wallpaper;
 
@@ -121,6 +133,10 @@ public sealed class Compositor : IDisposable
         return m;
     }
 
+    /// <summary>Output pixels per annotation style unit at time t (what <see cref="AnnotationPainter"/> draws with).</summary>
+    public static float AnnotationUnit(CameraTrack cam, int outW, int outH, double tMs) =>
+        Unit(cam, outW, outH) * (float)Math.Sqrt(cam.At(tMs).scale);
+
     private static float Unit(CameraTrack cam, int outW, int outH) =>
         (float)Math.Min(outW / cam.ViewW, outH / cam.ViewH);
 
@@ -132,7 +148,8 @@ public sealed class Compositor : IDisposable
     }
 
     /// <summary>Composite one frame from raw BGRA source pixels into BGRA output bytes.</summary>
-    public void RenderInto(byte[] srcBgra, double tMs, byte[] dst)
+    /// <param name="webcam">The webcam frame on screen at tMs (BGRA, project webcam size), or null.</param>
+    public void RenderInto(byte[] srcBgra, double tMs, byte[] dst, byte[]? webcam = null)
     {
         System.Runtime.InteropServices.Marshal.Copy(srcBgra, 0,
             _srcBitmap.GetPixels(), Math.Min(srcBgra.Length, SrcW * SrcH * 4));
@@ -221,6 +238,7 @@ public sealed class Compositor : IDisposable
             canvas.Restore();
         }
         DrawOverlays(canvas, st, m, tMs);
+        if (webcam != null) DrawWebcam(canvas, st, webcam);
         DrawLogo(canvas, st);
 
         canvas.Flush();
@@ -405,6 +423,69 @@ public sealed class Compositor : IDisposable
         canvas.DrawBitmap(_logo, x, y, paint);
     }
 
+    /// <summary>Where the webcam bubble sits in an output frame.</summary>
+    public static SKRect WebcamRect(StyleSettings st, int outW, int outH)
+    {
+        float shortSide = Math.Min(outW, outH);
+        float h = shortSide * Math.Clamp(st.WebcamSize, 0.08f, 0.7f);
+        float w = st.WebcamShape == WebcamShape.Oval ? h * 4f / 3f : h;
+        float margin = shortSide * 0.035f;
+        float x = margin + Math.Clamp(st.WebcamX, 0, 1) * Math.Max(0, outW - 2 * margin - w);
+        float y = margin + Math.Clamp(st.WebcamY, 0, 1) * Math.Max(0, outH - 2 * margin - h);
+        return new SKRect(x, y, x + w, y + h);
+    }
+
+    /// <summary>The outline of the bubble (circle, rounded square or oval).</summary>
+    public static SKPath WebcamPath(StyleSettings st, SKRect r)
+    {
+        var path = new SKPath();
+        if (st.WebcamShape == WebcamShape.Square) path.AddRoundRect(r, r.Height * 0.16f, r.Height * 0.16f);
+        else path.AddOval(r);
+        return path;
+    }
+
+    private void DrawWebcam(SKCanvas canvas, StyleSettings st, byte[] frame)
+    {
+        if (!st.ShowWebcam || _p.Webcam is not { Width: > 0, Height: > 0 } wc) return;
+        if (_webcam == null || _webcam.Width != wc.Width || _webcam.Height != wc.Height)
+        {
+            _webcam?.Dispose();
+            _webcam = new SKBitmap(new SKImageInfo(wc.Width, wc.Height, SKColorType.Bgra8888, SKAlphaType.Premul));
+        }
+        System.Runtime.InteropServices.Marshal.Copy(frame, 0, _webcam.GetPixels(), Math.Min(frame.Length, wc.Width * wc.Height * 4));
+
+        var r = WebcamRect(st, OutW, OutH);
+        using var path = WebcamPath(st, r);
+        float u = Math.Min(OutW, OutH) / 1080f;
+        using (var shadow = new SKPaint { IsAntialias = true, Color = new SKColor(0, 0, 0, 110) })
+        {
+            shadow.MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, 18 * u);
+            canvas.Save();
+            canvas.Translate(0, 6 * u);
+            canvas.DrawPath(path, shadow);
+            canvas.Restore();
+        }
+
+        // Aspect-fill the shape with the frame, mirrored like a selfie view if asked.
+        float s = Math.Max(r.Width / wc.Width, r.Height / wc.Height);
+        float iw = wc.Width * s, ih = wc.Height * s;
+        var dest = new SKRect(r.MidX - iw / 2, r.MidY - ih / 2, r.MidX + iw / 2, r.MidY + ih / 2);
+        canvas.Save();
+        canvas.ClipPath(path, SKClipOperation.Intersect, antialias: true);
+        if (st.WebcamMirror)
+        {
+            canvas.Translate(r.MidX, 0);
+            canvas.Scale(-1, 1);
+            canvas.Translate(-r.MidX, 0);
+        }
+        using (var paint = new SKPaint { FilterQuality = SKFilterQuality.Medium })
+            canvas.DrawBitmap(_webcam, dest, paint);
+        canvas.Restore();
+
+        using var ring = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = Math.Max(1.5f, 3 * u), Color = new SKColor(255, 255, 255, 70) };
+        canvas.DrawPath(path, ring);
+    }
+
     private static readonly HashSet<string> Modifiers = new(StringComparer.OrdinalIgnoreCase)
         { "Ctrl", "Shift", "Alt", "Win", "Right Ctrl", "Right Shift", "Right Alt", "Left Windows", "Right Windows" };
 
@@ -471,5 +552,6 @@ public sealed class Compositor : IDisposable
         _wallpaper?.Dispose();
         _logo?.Dispose();
         _bgImage?.Dispose();
+        _webcam?.Dispose();
     }
 }

@@ -1,138 +1,251 @@
 <UserControl x:Class="Glidecast.App.Views.HomeView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Resources>
+        <!-- A recording mode: a drawn miniature of the screen and a label. -->
+        <Style x:Key="ModeTile" TargetType="Button">
+            <Setter Property="Foreground" Value="{StaticResource Text}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Margin" Value="0,0,12,0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="b" Background="{StaticResource Panel2}" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="12" Padding="14,14,14,12">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{StaticResource Panel3}" />
+                                <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource Accent}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="b" Property="Opacity" Value="0.85" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="Screen" TargetType="Border">
+            <Setter Property="Height" Value="104" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Background" Value="{StaticResource Bg}" />
+            <Setter Property="BorderBrush" Value="{StaticResource BorderStrong}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="ClipToBounds" Value="True" />
+        </Style>
+        <Style x:Key="TileLabel" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0,12,0,0" />
+        </Style>
+        <Style x:Key="Pick" TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
+            <Setter Property="Height" Value="36" />
+            <Setter Property="ClipToBounds" Value="True" />
+        </Style>
+        <Style x:Key="PickIcon" TargetType="Border">
+            <Setter Property="Width" Value="36" />
+            <Setter Property="Height" Value="36" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Background" Value="{StaticResource Panel2}" />
+            <Setter Property="Margin" Value="0,0,8,0" />
+        </Style>
+    </UserControl.Resources>
+
     <Grid>
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="400" />
-        </Grid.ColumnDefinitions>
-
-        <!-- New recording -->
-        <ScrollViewer x:Name="HeroScroll" VerticalScrollBarVisibility="Auto">
-            <StackPanel Width="600" Margin="48,64,48,40" HorizontalAlignment="Center">
-                <TextBlock Text="New recording" Style="{StaticResource Title}" FontSize="26" />
-                <TextBlock Style="{StaticResource Hint}" FontSize="13.5" LineHeight="21" Margin="0,8,0,0" MaxWidth="520" HorizontalAlignment="Left"
-                           Text="Pick what to capture. Glidecast adds zooms on your clicks, a smooth cursor and a background, so the video is ready to share." />
-
-                <TextBlock Text="Source" Style="{StaticResource SectionLabel}" Margin="0,32,0,10" />
-                <UniformGrid Columns="2">
-                    <RadioButton x:Name="FullScreenCard" Style="{StaticResource Card}" GroupName="mode" IsChecked="True" Margin="0,0,6,0">
-                        <StackPanel>
-                            <Border Width="36" Height="36" CornerRadius="8" Background="{StaticResource Panel3}" HorizontalAlignment="Left">
-                                <TextBlock Style="{StaticResource Icon}" Text="&#xE7F4;" FontSize="17" />
-                            </Border>
-                            <TextBlock Text="Full screen" FontSize="14" FontWeight="SemiBold" Margin="0,14,0,3" />
-                            <TextBlock Text="Your whole main display" Style="{StaticResource Hint}" />
-                        </StackPanel>
-                    </RadioButton>
-                    <RadioButton x:Name="RegionCard" Style="{StaticResource Card}" GroupName="mode" Margin="6,0,0,0">
-                        <StackPanel>
-                            <Border Width="36" Height="36" CornerRadius="8" Background="{StaticResource Panel3}" HorizontalAlignment="Left">
-                                <TextBlock Style="{StaticResource Icon}" Text="&#xE7A8;" FontSize="17" />
-                            </Border>
-                            <TextBlock Text="Custom area" FontSize="14" FontWeight="SemiBold" Margin="0,14,0,3" />
-                            <TextBlock Text="Drag out the part you want" Style="{StaticResource Hint}" />
-                        </StackPanel>
-                    </RadioButton>
-                </UniformGrid>
-
-                <Border Margin="0,12,0,0" Background="{StaticResource Panel}" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="10" Padding="16,12">
-                    <DockPanel>
-                        <Border DockPanel.Dock="Right" Style="{StaticResource SegmentHost}">
+        <!-- Moved into the window title bar at runtime. -->
+        <StackPanel x:Name="TitleBar" Orientation="Horizontal" VerticalAlignment="Center">
+            <Rectangle Width="1" Height="18" Fill="{StaticResource BorderStrong}" Margin="0,0,6,0" />
+            <ToggleButton x:Name="ProjectsToggle" Cursor="Hand" FocusVisualStyle="{x:Null}" ToolTip="Recent projects, open, demo">
+                <ToggleButton.Template>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="b" Background="Transparent" CornerRadius="6" Padding="10,5">
                             <StackPanel Orientation="Horizontal">
-                                <RadioButton x:Name="Fps30" Content="30 fps" Style="{StaticResource Segment}" GroupName="fps" IsChecked="True" />
-                                <RadioButton x:Name="Fps60" Content="60 fps" Style="{StaticResource Segment}" GroupName="fps" />
+                                <TextBlock Style="{StaticResource Icon}" Text="&#xE8B7;" FontSize="13" Foreground="{StaticResource Subtext}" Margin="0,0,8,0" />
+                                <TextBlock Text="Projects" FontWeight="Medium" Foreground="{StaticResource Subtext}" />
+                                <TextBlock Style="{StaticResource Icon}" Text="&#xE70D;" FontSize="9" Foreground="{StaticResource Muted}" Margin="7,1,0,0" />
                             </StackPanel>
                         </Border>
-                        <StackPanel VerticalAlignment="Center">
-                            <TextBlock Text="Frame rate" FontWeight="Medium" />
-                            <TextBlock Text="60 fps is smoother but makes larger files." Style="{StaticResource Hint}" Margin="0,2,0,0" />
-                        </StackPanel>
-                    </DockPanel>
-                </Border>
-
-                <StackPanel Orientation="Horizontal" Margin="0,28,0,0">
-                    <Button x:Name="RecordButton" AutomationProperties.Name="Start recording" Style="{StaticResource RecordButton}"
-                            Padding="20,10" FontSize="14" Click="Record_Click">
-                        <StackPanel Orientation="Horizontal">
-                            <Ellipse Width="9" Height="9" Fill="White" Margin="0,0,10,0" VerticalAlignment="Center" />
-                            <TextBlock Text="Start recording" Foreground="White" />
-                        </StackPanel>
-                    </Button>
-                    <Button Margin="10,0,0,0" Padding="14,10" Click="Open_Click">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Style="{StaticResource Icon}" Text="&#xE838;" FontSize="13" Margin="0,0,8,0" />
-                            <TextBlock Text="Open project" />
-                        </StackPanel>
-                    </Button>
-                    <Button Margin="4,0,0,0" Padding="12,10" Style="{StaticResource GhostButton}" Click="Demo_Click" Content="Try a demo" />
-                </StackPanel>
-                <TextBlock Style="{StaticResource Hint}" Margin="0,14,0,0"
-                           Text="Recording starts after a 3-second countdown. The Stop toolbar is never captured." />
-                <TextBlock x:Name="Status" Style="{StaticResource Hint}" Foreground="{StaticResource AccentText}" Margin="0,10,0,0" />
-
-                <Border x:Name="RecoveredBanner" Visibility="Collapsed" Margin="0,20,0,0" Padding="12,10" CornerRadius="8"
-                        Background="#143DD68C" BorderBrush="#403DD68C" BorderThickness="1">
-                    <DockPanel>
-                        <TextBlock Style="{StaticResource Icon}" Text="&#xE73E;" FontSize="12" Foreground="{StaticResource Success}" VerticalAlignment="Top" Margin="0,2,10,0" />
-                        <TextBlock x:Name="RecoveredText" FontSize="12.5" TextWrapping="Wrap" VerticalAlignment="Center" />
-                    </DockPanel>
-                </Border>
-
-                <Rectangle Style="{StaticResource Divider}" Margin="0,40,0,16" />
-                <DockPanel>
-                    <TextBlock Style="{StaticResource Icon}" Text="&#xE8B7;" FontSize="12" Foreground="{StaticResource Muted}" VerticalAlignment="Top" Margin="0,2,8,0" />
-                    <TextBlock x:Name="SaveFolder" Style="{StaticResource Hint}" Foreground="{StaticResource Muted}" />
-                </DockPanel>
-            </StackPanel>
-        </ScrollViewer>
-
-        <!-- Recent projects -->
-        <Border Grid.Column="1" Background="{StaticResource Panel}" BorderBrush="{StaticResource Border}" BorderThickness="1,0,0,0">
-            <DockPanel>
-                <DockPanel DockPanel.Dock="Top" Margin="24,24,24,12">
-                    <Border x:Name="RecentCountTag" DockPanel.Dock="Right" Background="{StaticResource Panel3}" CornerRadius="5" Padding="7,2" VerticalAlignment="Center">
-                        <TextBlock x:Name="RecentCount" FontSize="11.5" FontWeight="Medium" Foreground="{StaticResource Subtext}" Typography.NumeralAlignment="Tabular" />
-                    </Border>
-                    <TextBlock Text="Recent projects" Style="{StaticResource Title}" FontSize="14" VerticalAlignment="Center" />
-                </DockPanel>
-                <StackPanel x:Name="NoRecent" DockPanel.Dock="Top" Margin="24,56,24,0">
-                    <Border Width="44" Height="44" CornerRadius="10" Background="{StaticResource Panel2}" BorderBrush="{StaticResource Border}" BorderThickness="1">
-                        <TextBlock Style="{StaticResource Icon}" Text="&#xE714;" FontSize="18" Foreground="{StaticResource Muted}" />
-                    </Border>
-                    <TextBlock Text="No recordings yet" HorizontalAlignment="Center" Margin="0,14,0,4" FontWeight="SemiBold" />
-                    <TextBlock Text="Projects you record or open show up here." Style="{StaticResource Hint}" HorizontalAlignment="Center" />
-                </StackPanel>
-                <ListBox x:Name="RecentList" Background="Transparent" BorderThickness="0" Padding="12,0,12,12"
-                         ScrollViewer.HorizontalScrollBarVisibility="Disabled" SelectionChanged="Recent_Open">
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="112" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <Border Width="112" Height="63" CornerRadius="6" Background="{StaticResource Panel3}" BorderBrush="{StaticResource Border}" BorderThickness="1">
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="b" Property="Background" Value="{StaticResource Hover}" /></Trigger>
+                            <Trigger Property="IsChecked" Value="True"><Setter TargetName="b" Property="Background" Value="{StaticResource Hover}" /></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </ToggleButton.Template>
+            </ToggleButton>
+            <Popup IsOpen="{Binding IsChecked, ElementName=ProjectsToggle}" PlacementTarget="{Binding ElementName=ProjectsToggle}" Placement="Bottom"
+                   StaysOpen="False" AllowsTransparency="True" Closed="Projects_Closed" Opened="Projects_Opened">
+                <Border Background="{StaticResource Panel2}" BorderBrush="{StaticResource BorderStrong}" BorderThickness="1" CornerRadius="10" Padding="6" Margin="0,6,0,0" Width="380">
+                    <StackPanel>
+                        <DockPanel Margin="10,6,10,8">
+                            <TextBlock x:Name="RecentCount" DockPanel.Dock="Right" Style="{StaticResource Hint}" />
+                            <TextBlock Text="Recent projects" FontWeight="SemiBold" />
+                        </DockPanel>
+                        <TextBlock x:Name="NoRecent" Text="Projects you record or open show up here." Style="{StaticResource Hint}" Margin="10,4,10,12" />
+                        <ListBox x:Name="RecentList" Background="Transparent" BorderThickness="0" MaxHeight="320"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled" SelectionChanged="Recent_Open">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
                                     <Grid>
-                                        <Border CornerRadius="5">
-                                            <Border.Background>
-                                                <ImageBrush ImageSource="{Binding Thumb}" Stretch="UniformToFill" />
-                                            </Border.Background>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="84" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border Width="84" Height="47" CornerRadius="5" Background="{StaticResource Panel3}">
+                                            <Grid>
+                                                <Border CornerRadius="5">
+                                                    <Border.Background>
+                                                        <ImageBrush ImageSource="{Binding Thumb}" Stretch="UniformToFill" />
+                                                    </Border.Background>
+                                                </Border>
+                                                <Border Background="#CC000000" CornerRadius="3" Padding="4,0" Margin="3" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+                                                    <TextBlock Text="{Binding Length}" FontSize="10" Foreground="White" Typography.NumeralAlignment="Tabular" />
+                                                </Border>
+                                            </Grid>
                                         </Border>
-                                        <Border Background="#CC000000" CornerRadius="4" Padding="5,1" Margin="4" HorizontalAlignment="Right" VerticalAlignment="Bottom">
-                                            <TextBlock Text="{Binding Length}" FontSize="10.5" FontWeight="Medium" Foreground="White" Typography.NumeralAlignment="Tabular" />
-                                        </Border>
+                                        <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Name}" FontWeight="Medium" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding When}" Style="{StaticResource Hint}" Margin="0,2,0,0" />
+                                        </StackPanel>
                                     </Grid>
-                                </Border>
-                                <StackPanel Grid.Column="1" Margin="12,2,0,0" VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding Name}" FontWeight="Medium" TextTrimming="CharacterEllipsis" />
-                                    <TextBlock Text="{Binding When}" Style="{StaticResource Hint}" Margin="0,3,0,0" />
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <Rectangle Style="{StaticResource Divider}" Margin="4,6" />
+                        <Button Style="{StaticResource GhostButton}" HorizontalContentAlignment="Left" Click="Open_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Style="{StaticResource Icon}" Text="&#xE838;" FontSize="13" Margin="0,0,10,0" />
+                                <TextBlock Text="Open project…" />
+                            </StackPanel>
+                        </Button>
+                        <Button Style="{StaticResource GhostButton}" HorizontalContentAlignment="Left" Click="Demo_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Style="{StaticResource Icon}" Text="&#xE768;" FontSize="13" Margin="0,0,10,0" />
+                                <TextBlock Text="Try a demo project" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </Border>
+            </Popup>
+        </StackPanel>
+
+        <Grid Margin="24,18,24,16">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="300" />
+            </Grid.ColumnDefinitions>
+
+            <TextBlock Text="What do you want to record?" Style="{StaticResource Hint}" FontSize="13" Margin="2,0,0,12" />
+            <TextBlock Grid.Column="2" Text="Inputs" Style="{StaticResource Hint}" FontSize="13" Margin="2,0,0,12" />
+
+            <!-- Modes -->
+            <UniformGrid Grid.Row="1" Columns="3" VerticalAlignment="Top">
+                <Button Style="{StaticResource ModeTile}" Tag="full" Click="Mode_Click" ToolTip="Record your whole main display">
+                    <StackPanel>
+                        <Border Style="{StaticResource Screen}">
+                            <Border Margin="10" CornerRadius="4" Background="{StaticResource Panel3}" BorderBrush="{StaticResource Accent}" BorderThickness="2">
+                                <StackPanel VerticalAlignment="Top" Margin="8">
+                                    <Border Height="5" Width="44" CornerRadius="2.5" Background="{StaticResource BorderStrong}" HorizontalAlignment="Left" />
+                                    <Border Height="5" Width="70" CornerRadius="2.5" Background="{StaticResource Hover}" HorizontalAlignment="Left" Margin="0,6,0,0" />
+                                    <Border Height="5" Width="56" CornerRadius="2.5" Background="{StaticResource Hover}" HorizontalAlignment="Left" Margin="0,6,0,0" />
                                 </StackPanel>
+                            </Border>
+                        </Border>
+                        <TextBlock Text="Full screen" Style="{StaticResource TileLabel}" />
+                    </StackPanel>
+                </Button>
+                <Button Style="{StaticResource ModeTile}" Tag="area" Click="Mode_Click" ToolTip="Drag out the part of the screen you want">
+                    <StackPanel>
+                        <Border Style="{StaticResource Screen}">
+                            <Grid>
+                                <Border Margin="10" CornerRadius="4" Background="{StaticResource Panel3}" Opacity="0.55" />
+                                <Rectangle Width="96" Height="54" Stroke="{StaticResource Accent}" StrokeThickness="2" StrokeDashArray="3 2" Fill="#223D7EFF" />
+                                <Ellipse Width="7" Height="7" Fill="White" Margin="96,54,0,0" />
                             </Grid>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
+                        </Border>
+                        <TextBlock Text="Custom area" Style="{StaticResource TileLabel}" />
+                    </StackPanel>
+                </Button>
+                <Button Style="{StaticResource ModeTile}" Tag="window" Click="Mode_Click" ToolTip="Pick one app window" Margin="0">
+                    <StackPanel>
+                        <Border Style="{StaticResource Screen}">
+                            <Grid>
+                                <Border Margin="10" CornerRadius="4" Background="{StaticResource Panel3}" Opacity="0.55" />
+                                <Border Width="110" Height="64" CornerRadius="5" Background="{StaticResource Panel2}" BorderBrush="{StaticResource Accent}" BorderThickness="2">
+                                    <DockPanel>
+                                        <Border DockPanel.Dock="Top" Height="12" Background="{StaticResource Hover}" CornerRadius="3,3,0,0">
+                                            <StackPanel Orientation="Horizontal" Margin="5,0" VerticalAlignment="Center">
+                                                <Ellipse Width="4" Height="4" Fill="{StaticResource Muted}" Margin="0,0,3,0" />
+                                                <Ellipse Width="4" Height="4" Fill="{StaticResource Muted}" Margin="0,0,3,0" />
+                                                <Ellipse Width="4" Height="4" Fill="{StaticResource Muted}" />
+                                            </StackPanel>
+                                        </Border>
+                                        <Border />
+                                    </DockPanel>
+                                </Border>
+                            </Grid>
+                        </Border>
+                        <TextBlock Text="Window" Style="{StaticResource TileLabel}" />
+                    </StackPanel>
+                </Button>
+            </UniformGrid>
+
+            <Rectangle Grid.Row="1" Grid.Column="1" Width="1" Fill="{StaticResource Border}" Margin="20,0" />
+
+            <!-- Inputs -->
+            <StackPanel Grid.Row="1" Grid.Column="2">
+                <DockPanel>
+                    <Border Style="{StaticResource PickIcon}" ToolTip="Camera">
+                        <TextBlock Style="{StaticResource Icon}" Text="&#xE714;" FontSize="15" Foreground="{StaticResource Subtext}" />
+                    </Border>
+                    <ComboBox x:Name="CameraPick" Style="{StaticResource Pick}" SelectionChanged="Inputs_Changed" />
+                </DockPanel>
+                <DockPanel Margin="0,10,0,0">
+                    <Border Style="{StaticResource PickIcon}" ToolTip="Microphone">
+                        <TextBlock Style="{StaticResource Icon}" Text="&#xE720;" FontSize="15" Foreground="{StaticResource Subtext}" />
+                    </Border>
+                    <Grid>
+                        <ComboBox x:Name="MicPick" Style="{StaticResource Pick}" SelectionChanged="Mic_Changed" />
+                        <Border x:Name="MicLevel" Height="2" CornerRadius="1" Background="{StaticResource Success}" HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                Margin="8,0,0,3" Width="0" IsHitTestVisible="False" />
+                    </Grid>
+                </DockPanel>
+                <DockPanel Margin="0,10,0,0">
+                    <Border Style="{StaticResource PickIcon}" ToolTip="System sound">
+                        <TextBlock Style="{StaticResource Icon}" Text="&#xE767;" FontSize="15" Foreground="{StaticResource Subtext}" />
+                    </Border>
+                    <ComboBox x:Name="SpeakerPick" Style="{StaticResource Pick}" SelectionChanged="Inputs_Changed" />
+                </DockPanel>
+                <Rectangle Style="{StaticResource Divider}" Margin="0,14" />
+                <Button Height="36" Click="Teleprompter_Click" ToolTip="A script that scrolls while you talk; never recorded">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Style="{StaticResource Icon}" Text="&#xE8A5;" FontSize="13" Margin="0,0,9,0" />
+                        <TextBlock Text="Teleprompter" />
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+
+            <!-- Footer -->
+            <DockPanel Grid.Row="2" Grid.ColumnSpan="3" Margin="2,14,0,0">
+                <TextBlock DockPanel.Dock="Right" Style="{StaticResource Hint}" Foreground="{StaticResource Muted}" VerticalAlignment="Center"
+                           Text="Pick a mode, place your camera, then press Start. F9 marks a moment while recording." />
+                <Border x:Name="RecoveredBanner" Visibility="Collapsed" Padding="10,4" CornerRadius="6" Background="#143DD68C" BorderBrush="#403DD68C" BorderThickness="1"
+                        HorizontalAlignment="Left" Margin="0,0,12,0">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Style="{StaticResource Icon}" Text="&#xE73E;" FontSize="11" Foreground="{StaticResource Success}" Margin="0,0,8,0" />
+                        <TextBlock x:Name="RecoveredText" FontSize="12" />
+                    </StackPanel>
+                </Border>
+                <TextBlock x:Name="Status" Style="{StaticResource Hint}" Foreground="{StaticResource AccentText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
             </DockPanel>
-        </Border>
+        </Grid>
     </Grid>
 </UserControl>

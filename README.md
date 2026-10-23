@@ -42,9 +42,14 @@ Requires Windows 10 1809 or later, or Windows 11 (x64).
 ## Features
 
 **Recording**
-- Full screen or a custom area, at 30 or 60 fps, with a per-frame timestamp so
-  video, cursor and zooms stay in sync even when frames drop.
-- The recording toolbar is excluded from the capture.
+- Full screen, a custom area or a single window, at 30 or 60 fps, with a
+  per-frame timestamp so video, cursor and zooms stay in sync even when frames drop.
+- System sound and a microphone, each from the device you pick.
+- A webcam bubble (circle, square or oval) you can drag and resize before and
+  during the take; it is recorded separately and editable afterwards.
+- Optional "annotate as I record", and F9 to highlight a moment while recording.
+- A teleprompter that is never recorded.
+- The toolbars, camera preview and teleprompter are excluded from the capture.
 - Crash-safe: an interrupted recording is recovered the next time you open the app.
 
 **Automatic camera**
@@ -56,10 +61,14 @@ Requires Windows 10 1809 or later, or Windows 11 (x64).
 - Spring-based motion with Subtle, Balanced, Dramatic and Tutorial presets.
 
 **Editing**
-- Timeline with a film strip and draggable, resizable zoom blocks. Click the
-  preview to aim a zoom.
+- Timeline with a film strip and draggable, resizable zoom blocks, zoomable
+  with `Ctrl+scroll`. Click the preview to aim a zoom.
+- Undo and redo.
 - Annotations: step numbers, highlight boxes, spotlights, arrows and callouts,
-  or generate a numbered walkthrough from your clicks.
+  or generate a numbered walkthrough from your clicks. Select, move and resize
+  them right on the preview.
+- Camera and audio: restyle or move the webcam bubble, and set the volume of
+  each audio track.
 - Cursor styles, sizes, smoothing, click effects, keystroke overlay and an
   optional motion trail.
 - Backgrounds (gradients, solid colors or your own wallpaper), padding, corner
@@ -77,8 +86,9 @@ Requires Windows 10 1809 or later, or Windows 11 (x64).
 
 ## Usage
 
-1. **Record.** Choose *Full screen* or *Custom area* and select **Start recording**.
-   A 3-second countdown runs first. Select **Stop** on the toolbar when you're done.
+1. **Record.** Choose *Full screen*, *Custom area* or *Window*, and your camera,
+   microphone and system sound. Place the camera bubble, then select
+   **Start recording**. Select **Stop** on the toolbar when you're done.
 2. **Edit.** The editor opens with zooms already placed on your clicks. Use the
    inspector on the right for background, frame, cursor, zoom and annotations.
 3. **Export.** Choose the canvas, resolution, frame rate and quality.
@@ -89,7 +99,10 @@ Requires Windows 10 1809 or later, or Windows 11 (x64).
 | `←` / `→` | Step one frame (hold `Shift` for 5 seconds) |
 | `Z` | Add a zoom at the playhead |
 | `Delete` | Delete the selected zoom or annotation |
+| `Ctrl+Z` / `Ctrl+Y` | Undo / redo |
+| `Ctrl+scroll` | Zoom the timeline (`Ctrl+0` shows it all) |
 | `Ctrl+E` | Export |
+| `F9` | While recording: highlight what is under the cursor |
 
 Projects are saved to `Documents\Glidecast`. If Windows Controlled Folder Access
 blocks that folder, Glidecast uses `%LOCALAPPDATA%\Glidecast\Recordings`
@@ -155,9 +168,8 @@ keys   ─▶ key presses ──────────────┘
 
 ## Roadmap
 
-- Audio capture (microphone and system)
-- Webcam overlay
-- Undo and redo
+- Recording a phone screen
+- Sound from a single app
 - Trimming and cutting
 - Multi-monitor region selection
 - Code-signed releases

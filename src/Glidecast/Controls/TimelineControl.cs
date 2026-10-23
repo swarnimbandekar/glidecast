@@ -11,8 +11,10 @@ namespace Glidecast.App.Controls;
 /// <summary>
 /// Editor timeline: ruler (click/drag to scrub), a film strip of the recording,
 /// a zoom lane whose blocks can be selected, moved, resized at either edge and
-/// added by double-clicking empty space, and an input lane showing clicks and
-/// keystrokes. Segments are edited in place on <see cref="Project.ZoomSegments"/>.
+/// added by double-clicking empty space, a notes lane for annotations (move,
+/// retime at either edge), and an input lane showing clicks and keystrokes.
+/// Ctrl+scroll zooms the time axis around the pointer; scrolling pans it.
+/// Segments are edited in place on <see cref="Project.ZoomSegments"/>.
 /// </summary>
 public sealed class TimelineControl : FrameworkElement
 {
@@ -24,10 +26,14 @@ public sealed class TimelineControl : FrameworkElement
     private const double ZoomTop = FilmTop + FilmH + 10;
     private const double ZoomH = 42;
     private const double NoteTop = ZoomTop + ZoomH + 8;
-    private const double NoteH = 24;
+    private const double NoteH = 36;
+    private const double NoteRowH = 10.5;
     private const double InputTop = NoteTop + NoteH + 8;
     private const double InputH = 18;
-    private const double TotalH = InputTop + InputH + 12;
+    private const double ThumbTop = InputTop + InputH + 8;
+    private const double ThumbH = 5;
+    private const double TotalH = ThumbTop + ThumbH + 7;
+    private const double MinViewMs = 400;
     private const double EdgeGrab = 8;
     private const double MinSegMs = 200;
 
@@ -46,6 +52,8 @@ public sealed class TimelineControl : FrameworkElement
     private static readonly Brush NoteBrush = Frozen("#FFB224");
     private static readonly Brush NoteBoxBrush = Frozen("#3DD68C");
     private static readonly Brush NoteTextBrush = Frozen("#E93D82");
+    private static readonly Brush ThumbBrush = Frozen("#3A3A3E");
+    private static readonly Brush ThumbHoverBrush = Frozen("#55555B");
     private static readonly Pen SelPen = FrozenPen(Brushes.White, 1.5);
     private static readonly Pen FilmEdge = FrozenPen(Frozen("#2B2B2E"), 1);
     private static readonly Typeface Face = new(new FontFamily(new Uri("pack://application:,,,/Glidecast;component/Fonts/"), "./#Inter, Segoe UI"), FontStyles.Normal, FontWeights.Medium, FontStretches.Normal);
@@ -57,9 +65,13 @@ public sealed class TimelineControl : FrameworkElement
     private Annotation? _note;
     private IReadOnlyList<BitmapSource>? _film;
 
-    private enum DragMode { None, Scrub, Move, ResizeStart, ResizeEnd, MoveNote }
+    private enum DragMode { None, Scrub, Move, ResizeStart, ResizeEnd, MoveNote, NoteStart, NoteEnd, Pan }
     private DragMode _drag;
     private double _dragOffsetMs;
+    private bool _thumbHover;
+
+    // Visible window of the time axis; a span of 0 shows the whole recording.
+    private double _viewStart, _viewSpan;
 
     /// <summary>User scrubbed to a time.</summary>
     public event Action<double>? SeekRequested;
@@ -71,6 +83,8 @@ public sealed class TimelineControl : FrameworkElement
     public event Action<Annotation?>? NoteSelectionChanged;
     /// <summary>An annotation was moved in time.</summary>
     public event Action? NotesChanged;
+    /// <summary>The visible time window changed (zoom or pan).</summary>
+    public event Action? ViewChanged;
 
     public TimelineControl()
     {
@@ -82,14 +96,77 @@ public sealed class TimelineControl : FrameworkElement
     public Project? Project
     {
         get => _project;
-        set { _project = value; _selected = null; _note = null; InvalidateVisual(); }
+        set
+        {
+            if (_project != value) { _viewStart = 0; _viewSpan = 0; }
+            _project = value;
+            _selected = null;
+            _note = null;
+            InvalidateVisual();
+        }
     }
 
     public double Playhead
     {
         get => _playhead;
-        set { _playhead = value; InvalidateVisual(); }
+        set
+        {
+            _playhead = value;
+            // Keep the playhead on screen while playing or stepping through a zoomed timeline.
+            if (IsZoomed && _drag == DragMode.None && (value < _viewStart || value > _viewStart + ViewSpan))
+                SetView(value - ViewSpan * 0.1, ViewSpan);
+            InvalidateVisual();
+        }
     }
+
+    // ---------------------------------------------------------------- time axis zoom
+
+    private double ViewSpan => _viewSpan <= 0 ? Duration : _viewSpan;
+    public bool IsZoomed => ViewSpan < Duration - 1;
+    /// <summary>How much of the recording is visible, 1 = all of it.</summary>
+    public double ViewFraction => ViewSpan / Duration;
+
+    private void SetView(double start, double span)
+    {
+        span = Math.Clamp(span, Math.Min(MinViewMs, Duration), Duration);
+        start = Math.Clamp(start, 0, Duration - span);
+        if (Math.Abs(start - _viewStart) < 1e-6 && Math.Abs(span - ViewSpan) < 1e-6) return;
+        _viewStart = start;
+        _viewSpan = span >= Duration - 1 ? 0 : span;
+        InvalidateVisual();
+        ViewChanged?.Invoke();
+    }
+
+    /// <summary>Zooms the time axis by <paramref name="factor"/> (&gt;1 = closer), keeping <paramref name="anchorMs"/> in place.</summary>
+    public void ZoomBy(double factor, double? anchorMs = null)
+    {
+        double anchor = anchorMs ?? (_playhead >= _viewStart && _playhead <= _viewStart + ViewSpan ? _playhead : _viewStart + ViewSpan / 2);
+        double f = (anchor - _viewStart) / ViewSpan;
+        double span = Math.Clamp(ViewSpan / factor, Math.Min(MinViewMs, Duration), Duration);
+        SetView(anchor - f * span, span);
+    }
+
+    public void ZoomToFit() => SetView(0, Duration);
+
+    protected override void OnMouseWheel(MouseWheelEventArgs e)
+    {
+        if (_project == null) return;
+        var p = e.GetPosition(this);
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+            ZoomBy(Math.Pow(1.25, e.Delta / 120.0), p.X >= Gutter ? Ms(p.X) : null);
+        else if (IsZoomed)
+            SetView(_viewStart - e.Delta / 120.0 * ViewSpan * 0.12, ViewSpan);
+        else return;
+        e.Handled = true;
+    }
+
+    private Rect ThumbRect()
+    {
+        double x0 = Gutter + _viewStart / Duration * Usable;
+        return new Rect(x0, ThumbTop, Math.Max(24, ViewSpan / Duration * Usable), ThumbH);
+    }
+
+    private bool OnThumbRow(Point p) => IsZoomed && p.X >= Gutter && p.Y >= ThumbTop - 4 && p.Y <= ThumbTop + ThumbH + 5;
 
     /// <summary>Evenly spaced frames across the recording for the film strip.</summary>
     public IReadOnlyList<BitmapSource>? FilmStrip
@@ -146,11 +223,14 @@ public sealed class TimelineControl : FrameworkElement
     private Rect NoteRect(Annotation a)
     {
         double x0 = X(a.Start), x1 = X(a.End);
-        return new Rect(x0, NoteTop + 3 + NoteRow(a) * 6.5, Math.Max(4, x1 - x0), 5);
+        return new Rect(x0, NoteTop + 3.5 + NoteRow(a) * NoteRowH, Math.Max(4, x1 - x0), NoteRowH - 2.5);
     }
 
-    private Annotation? HitNote(Point p)
+    /// <summary>The annotation bar under p (the selected one wins ties), and
+    /// whether p is on its start or end edge.</summary>
+    private Annotation? HitNote(Point p, out DragMode mode)
     {
+        mode = DragMode.None;
         if (_project?.Annotations is not { } notes || p.Y < NoteTop || p.Y > NoteTop + NoteH) return null;
         Annotation? best = null;
         double bestD = double.MaxValue;
@@ -158,17 +238,22 @@ public sealed class TimelineControl : FrameworkElement
         {
             var r = NoteRect(a);
             if (p.X < r.Left - 3 || p.X > r.Right + 3) continue;
-            double d = Math.Abs(p.Y - (r.Top + r.Height / 2));
+            double d = Math.Abs(p.Y - (r.Top + r.Height / 2)) - (a == _note ? 2 : 0);
             if (d < bestD) { bestD = d; best = a; }
         }
+        if (best == null || bestD > NoteRowH) return null;
+        var br = NoteRect(best);
+        mode = br.Width < 16 ? DragMode.MoveNote
+            : p.X <= br.Left + 5 ? DragMode.NoteStart
+            : p.X >= br.Right - 5 ? DragMode.NoteEnd : DragMode.MoveNote;
         return best;
     }
 
     private List<ZoomSegment> Segments => _project?.ZoomSegments ?? new List<ZoomSegment>();
     private double Duration => Math.Max(1, _project?.DurationMs ?? 1);
     private double Usable => Math.Max(1, ActualWidth - Gutter - PadR);
-    private double X(double ms) => Gutter + ms / Duration * Usable;
-    private double Ms(double x) => Math.Clamp((x - Gutter) / Usable * Duration, 0, Duration);
+    private double X(double ms) => Gutter + (ms - _viewStart) / ViewSpan * Usable;
+    private double Ms(double x) => Math.Clamp(_viewStart + (x - Gutter) / Usable * ViewSpan, 0, Duration);
 
     protected override Size MeasureOverride(Size availableSize) =>
         new(double.IsInfinity(availableSize.Width) ? 600 : availableSize.Width, TotalH);
@@ -196,9 +281,11 @@ public sealed class TimelineControl : FrameworkElement
         LaneLabel("", "Input", InputTop, InputH);
 
         // Ruler: pick a tick step that keeps labels ~90px apart.
-        double[] steps = { 100, 250, 500, 1000, 2000, 5000, 10000, 15000, 30000, 60000, 120000, 300000 };
-        double step = steps.FirstOrDefault(s => s / Duration * Usable >= 90, steps[^1]);
-        for (double t = 0; t <= Duration + 1; t += step / 4)
+        double[] steps = { 50, 100, 250, 500, 1000, 2000, 5000, 10000, 15000, 30000, 60000, 120000, 300000 };
+        double step = steps.FirstOrDefault(s => s / ViewSpan * Usable >= 90, steps[^1]);
+        double viewEnd = Math.Min(Duration, _viewStart + ViewSpan);
+        dc.PushClip(new RectangleGeometry(new Rect(Gutter - 1, 0, Usable + PadR, ActualHeight)));
+        for (double t = Math.Floor(_viewStart / (step / 4)) * (step / 4); t <= viewEnd + 1; t += step / 4)
         {
             bool major = Math.Abs(t / step - Math.Round(t / step)) < 1e-6;
             double x = X(t);
@@ -209,6 +296,10 @@ public sealed class TimelineControl : FrameworkElement
                 if (x + 4 + label.Width <= ActualWidth) dc.DrawText(label, new Point(x + 4, 5));
             }
         }
+        dc.Pop();
+
+        // Lanes scroll with the view; keep them out of the labels.
+        dc.PushClip(new RectangleGeometry(new Rect(Gutter, 0, Usable, ActualHeight)));
 
         // Film strip.
         var filmRect = new Rect(Gutter, FilmTop, Usable, FilmH);
@@ -281,7 +372,7 @@ public sealed class TimelineControl : FrameworkElement
         }
         else
         {
-            var hint = Text("Steps, boxes and captions appear here (Annotate tab)", 10.5, LabelBrush);
+            var hint = Text("Steps, boxes and captions appear here (Annotate tab, or F9 while recording)", 10.5, LabelBrush);
             dc.DrawText(hint, new Point(Gutter + 12, NoteTop + (NoteH - hint.Height) / 2));
         }
 
@@ -291,9 +382,20 @@ public sealed class TimelineControl : FrameworkElement
             if (k.Down) dc.DrawRoundedRectangle(KeyBrush, null, new Rect(X(k.T) - 1, InputTop + 5, 2, InputH - 10), 1, 1);
         foreach (var c in _project.Clicks)
             dc.DrawEllipse(ClickBrush, null, new Point(X(c.T), InputTop + InputH / 2), 3.6, 3.6);
+        dc.Pop();
+
+        // Scroll thumb: where the visible window sits in the whole recording.
+        if (IsZoomed)
+        {
+            dc.DrawRoundedRectangle(LaneBrush, null, new Rect(Gutter, ThumbTop, Usable, ThumbH), ThumbH / 2, ThumbH / 2);
+            dc.DrawRoundedRectangle(_thumbHover || _drag == DragMode.Pan ? ThumbHoverBrush : ThumbBrush, null, ThumbRect(), ThumbH / 2, ThumbH / 2);
+            var zoomLabel = Text($"{1 / ViewFraction:0.#}×", 10, LabelBrush);
+            dc.DrawText(zoomLabel, new Point(Gutter - 8 - zoomLabel.Width, ThumbTop + (ThumbH - zoomLabel.Height) / 2));
+        }
 
         // Playhead with time bubble.
         double px = X(_playhead);
+        if (px < Gutter - 1 || px > Gutter + Usable + 1) return;
         dc.DrawRectangle(PlayheadBrush, null, new Rect(px - 1, RulerH - 2, 2, ActualHeight - RulerH));
         var bubbleText = Text(FormatTime(_playhead), 10.5, Brushes.White);
         double bw = bubbleText.Width + 12;
@@ -346,10 +448,23 @@ public sealed class TimelineControl : FrameworkElement
             return;
         }
 
-        if (HitNote(p) is { } note)
+        if (OnThumbRow(p))
+        {
+            // Grab the thumb, or center it on the click and keep dragging.
+            var th = ThumbRect();
+            if (p.X < th.Left || p.X > th.Right)
+                SetView((p.X - Gutter) / Usable * Duration - ViewSpan / 2, ViewSpan);
+            _drag = DragMode.Pan;
+            _dragOffsetMs = (p.X - Gutter) / Usable * Duration - _viewStart;
+            CaptureMouse();
+            e.Handled = true;
+            return;
+        }
+
+        if (HitNote(p, out var noteMode) is { } note)
         {
             SelectedNote = note;
-            _drag = DragMode.MoveNote;
+            _drag = noteMode;
             _dragOffsetMs = Ms(p.X) - note.Start;
             CaptureMouse();
             e.Handled = true;
@@ -383,8 +498,18 @@ public sealed class TimelineControl : FrameworkElement
         {
             var h = HitSegment(p, out var mode);
             if (h != _hover) { _hover = h; InvalidateVisual(); }
-            Cursor = mode is DragMode.ResizeStart or DragMode.ResizeEnd ? Cursors.SizeWE
-                : mode == DragMode.Move || HitNote(p) != null ? Cursors.Hand : p.Y < FilmTop + FilmH ? Cursors.IBeam : Cursors.Arrow;
+            bool onThumb = OnThumbRow(p) && p.X >= ThumbRect().Left && p.X <= ThumbRect().Right;
+            if (onThumb != _thumbHover) { _thumbHover = onThumb; InvalidateVisual(); }
+            HitNote(p, out var noteMode);
+            Cursor = mode is DragMode.ResizeStart or DragMode.ResizeEnd || noteMode is DragMode.NoteStart or DragMode.NoteEnd ? Cursors.SizeWE
+                : mode == DragMode.Move || noteMode == DragMode.MoveNote || onThumb ? Cursors.Hand
+                : p.Y < FilmTop + FilmH ? Cursors.IBeam : Cursors.Arrow;
+            return;
+        }
+
+        if (_drag == DragMode.Pan)
+        {
+            SetView((p.X - Gutter) / Usable * Duration - _dragOffsetMs, ViewSpan);
             return;
         }
 
@@ -406,6 +531,16 @@ public sealed class TimelineControl : FrameworkElement
                 NotesChanged?.Invoke();
                 return;
             }
+            case DragMode.NoteStart when _note != null:
+                _note.Start = Math.Clamp(t, 0, _note.End - MinSegMs);
+                InvalidateVisual();
+                NotesChanged?.Invoke();
+                return;
+            case DragMode.NoteEnd when _note != null:
+                _note.End = Math.Clamp(t, _note.Start + MinSegMs, Duration);
+                InvalidateVisual();
+                NotesChanged?.Invoke();
+                return;
             case DragMode.Move when s != null:
             {
                 double len = s.End - s.Start;
@@ -427,7 +562,7 @@ public sealed class TimelineControl : FrameworkElement
 
     protected override void OnMouseLeave(MouseEventArgs e)
     {
-        if (_hover != null) { _hover = null; InvalidateVisual(); }
+        if (_hover != null || _thumbHover) { _hover = null; _thumbHover = false; InvalidateVisual(); }
     }
 
     protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
@@ -437,7 +572,10 @@ public sealed class TimelineControl : FrameworkElement
             Segments.Sort((a, b) => a.Start.CompareTo(b.Start));
             SegmentsChanged?.Invoke();
         }
+        if (_drag is DragMode.MoveNote or DragMode.NoteStart or DragMode.NoteEnd)
+            _project?.Annotations?.Sort((a, b) => a.Start.CompareTo(b.Start));
         _drag = DragMode.None;
+        InvalidateVisual();
         ReleaseMouseCapture();
     }
 

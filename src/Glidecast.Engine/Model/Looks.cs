@@ -157,7 +157,18 @@ public static class LookLibrary
     /// <summary>Applies a look. With zoom settings, an untouched zoom lane is re-authored to match.</summary>
     public static void Apply(Project p, Look look)
     {
+        var before = p.Style;
         p.Style = look.Style.Clone();
+        // Where the webcam sits belongs to the take, not the look.
+        if (before != null)
+        {
+            p.Style.ShowWebcam = before.ShowWebcam;
+            p.Style.WebcamShape = before.WebcamShape;
+            p.Style.WebcamSize = before.WebcamSize;
+            p.Style.WebcamX = before.WebcamX;
+            p.Style.WebcamY = before.WebcamY;
+            p.Style.WebcamMirror = before.WebcamMirror;
+        }
         if (look.Zoom != null)
         {
             var keep = p.Zoom;

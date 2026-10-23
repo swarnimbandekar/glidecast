@@ -171,7 +171,7 @@ public sealed class ScreenRecorder : IDisposable
     public static void Finish(string video)
     {
         if (!File.Exists(video)) return;
-        string tmp = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(video))!, "source.remux.mp4");
+        string tmp = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(video))!, Path.GetFileNameWithoutExtension(video) + ".remux.mp4");
         try
         {
             FFmpeg.Run($"-y -hide_banner -loglevel error -i \"{video}\" -map 0 -c copy -movflags +faststart \"{tmp}\"", 300000);

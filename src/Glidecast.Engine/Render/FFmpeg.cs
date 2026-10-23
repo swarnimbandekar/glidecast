@@ -73,6 +73,7 @@ public static class FFmpeg
             RedirectStandardInput = redirectIn,
             RedirectStandardOutput = redirectOut,
             RedirectStandardError = true,
+            StandardErrorEncoding = System.Text.Encoding.UTF8, // device names
             CreateNoWindow = true,
         };
         var p = new Process { StartInfo = psi };
@@ -93,6 +94,7 @@ public static class FFmpeg
             UseShellExecute = false,
             RedirectStandardError = true,
             RedirectStandardOutput = true,
+            StandardErrorEncoding = System.Text.Encoding.UTF8,
             CreateNoWindow = true,
         };
         using var p = Process.Start(psi)!;

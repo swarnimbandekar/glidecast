@@ -1,5 +1,39 @@
 # Changelog
 
+## 1.2.0 — 2026-10-23
+
+- **New launcher**: the home screen is now a compact window. Pick *Full screen*,
+  *Custom area* or the new *Window* mode (hover a window to outline it, click to
+  record it), then choose your camera, microphone and system sound from
+  dropdowns. Projects, Open and the demo moved into a *Projects* menu in the
+  title bar.
+- **Get-ready step**: after you pick what to record, the area is outlined on
+  screen and a bar shows the inputs (with a live microphone level), the camera
+  shape, a 0/3/5 second countdown, 30 or 60 fps, and *Annotate as I record*.
+  Nothing on it is captured.
+- **Camera**: your webcam floats on the desktop as a circle, rounded square or
+  oval. Drag it, resize it, and it appears in the video exactly where you left
+  it. It is recorded separately, so the shape, size, position and mirroring can
+  still be changed in the editor (new *Media* tab).
+- **Audio**: record system sound (any output device) and a microphone. Each
+  track has its own volume and mute in the editor, plays with the preview and
+  is mixed into the export.
+- **Annotate as I record**: every click becomes a numbered step with a box and
+  a caption when you stop. Press **F9** during a take to highlight whatever is
+  under the cursor at that moment.
+- **Teleprompter**: a floating script that scrolls at your reading speed. It
+  stays on top and is never recorded.
+- **Undo and redo** in the editor (`Ctrl+Z`, `Ctrl+Y`, also buttons in the
+  title bar) for zooms, annotations, style and audio settings.
+- **Timeline zoom**: `Ctrl+scroll` zooms the time axis around the pointer,
+  scrolling pans it, and a scroll bar shows where you are. Also `Ctrl+=`,
+  `Ctrl+-` and `Ctrl+0`.
+- **Annotation editing**: select an annotation by clicking it on the preview,
+  drag it to move it, drag a box by its corner to resize it, and drag the ends
+  of its bar on the Notes lane to retime it. Clicking one used to aim the
+  selected zoom instead.
+- Crash recovery now also restores the webcam and audio of an interrupted take.
+
 ## 1.1.0 — 2026-10-23
 
 - **In-app updates**: Glidecast checks GitHub for a new release when it starts

@@ -183,11 +183,56 @@ public static class RecordingRecovery
         p.Clicks = p.Clicks.Where(e => e.T <= p.DurationMs).ToList();
         p.Keys = p.Keys.Where(e => e.T <= p.DurationMs).ToList();
         p.Carets = p.Carets.Where(e => e.T <= p.DurationMs).ToList();
+        AttachMedia(p, dir);
 
         p.Save(Path.Combine(dir, "project.json"));
         foreach (var f in new[] { RecordingJournal.HeaderFile, RecordingJournal.FramesFile, RecordingJournal.InputFile })
             try { File.Delete(Path.Combine(dir, f)); } catch { }
         return p;
+    }
+
+    /// <summary>Picks up the audio and webcam files of an interrupted take.</summary>
+    private static void AttachMedia(Project p, string dir)
+    {
+        foreach (var (name, source) in new[] { ("system", AudioSource.System), ("mic", AudioSource.Microphone) })
+        {
+            string wav = Path.Combine(dir, name + ".wav");
+            if (!File.Exists(wav) || new FileInfo(wav).Length <= 100) continue;
+            try
+            {
+                FixWavHeader(wav);
+                (p.Audio ??= new()).Add(new AudioTrack { Source = source, File = AudioRecorder.Compress(wav) });
+            }
+            catch { }
+        }
+
+        string cam = Path.Combine(dir, "webcam.mp4");
+        if (!File.Exists(cam) || new FileInfo(cam).Length == 0) return;
+        ScreenRecorder.Finish(cam);
+        int count = 0;
+        try { count = Render.FFmpeg.CountFrames(cam); } catch { }
+        var times = ReadLines(Path.Combine(dir, WebcamRecorder.LogFile))
+            .Select(l => double.TryParse(l, NumberStyles.Float, CultureInfo.InvariantCulture, out var t) ? t : double.NaN)
+            .Where(t => !double.IsNaN(t)).Take(count).ToList();
+        if (times.Count > 0)
+            p.Webcam = new WebcamTrack { Video = cam, Width = CameraFeed.Width, Height = CameraFeed.Height, Fps = WebcamRecorder.EncodeFps, FrameTimes = times };
+        try { File.Delete(Path.Combine(dir, WebcamRecorder.LogFile)); } catch { }
+    }
+
+    /// <summary>A WAV whose writer never closed has zero sizes in its header; fill them in from the file length.</summary>
+    private static void FixWavHeader(string wav)
+    {
+        using var fs = new FileStream(wav, FileMode.Open, FileAccess.ReadWrite);
+        var head = new byte[Math.Min(4096, fs.Length)];
+        fs.ReadExactly(head);
+        int data = -1;
+        for (int i = 12; i + 8 <= head.Length; i++)
+            if (head[i] == 'd' && head[i + 1] == 'a' && head[i + 2] == 't' && head[i + 3] == 'a') { data = i; break; }
+        if (data < 0) return;
+        fs.Position = 4;
+        fs.Write(BitConverter.GetBytes((uint)(fs.Length - 8)));
+        fs.Position = data + 4;
+        fs.Write(BitConverter.GetBytes((uint)(fs.Length - data - 8)));
     }
 
     private static IEnumerable<string> ReadLines(string path)
