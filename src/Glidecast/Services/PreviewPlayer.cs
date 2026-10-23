@@ -52,8 +52,12 @@ public sealed class PreviewPlayer : IDisposable
     {
         _p = p;
         _ui = ui;
-        OutWidth = Math.Min(outWidth, p.Width) & ~1;
-        OutHeight = (int)Math.Round(OutWidth * (double)p.Height / p.Width) & ~1;
+        // Preview in the canvas's shape (reframed 9:16 / 1:1 previews as exported),
+        // with the long side at most outWidth.
+        var (cw, ch) = Canvas.OutputSize(p.Style?.Aspect ?? CanvasAspect.Source, p.Width, p.Height);
+        double fit = Math.Min(1.0, outWidth / (double)Math.Max(cw, ch));
+        OutWidth = Math.Max(2, (int)Math.Round(cw * fit) & ~1);
+        OutHeight = Math.Max(2, (int)Math.Round(ch * fit) & ~1);
         // Decode at up to 1920 wide so zoomed-in previews stay sharp.
         int srcW = Math.Min(p.Width, 1920) & ~1;
         int srcH = (int)Math.Round(srcW * (double)p.Height / p.Width) & ~1;

@@ -47,7 +47,12 @@ public static class DemoGenerator
             p.Moves.Add(new MoveEvent { T = t, X = (int)x, Y = (int)y });
         }
         for (int i = 0; i < targets.Length; i++)
-            p.Clicks.Add(new ClickEvent { T = clickTimes[i], X = (int)targets[i].x, Y = (int)targets[i].y, Button = 0, Count = 1 });
+            p.Clicks.Add(new ClickEvent
+            {
+                T = clickTimes[i], X = (int)targets[i].x, Y = (int)targets[i].y, Button = 0, Count = 1,
+                // What UI Automation would report for the drawn buttons.
+                Element = new UiElement { X = (int)targets[i].x - 90, Y = (int)targets[i].y - 34, W = 180, H = 68, Name = targets[i].label, Role = "button" },
+            });
         // A couple of keystrokes to show the overlay.
         p.Keys.Add(new KeyEvent { T = 4300, Symbol = "Ctrl", Down = true });
         p.Keys.Add(new KeyEvent { T = 4350, Symbol = "B", Down = true });

@@ -5,7 +5,7 @@
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource Bg}" Foreground="{StaticResource Text}"
         FontFamily="{StaticResource UiFont}" FontSize="13"
-        UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
+        UseLayoutRounding="True" TextOptions.TextFormattingMode="Ideal" TextOptions.TextRenderingMode="ClearType">
     <WindowChrome.WindowChrome>
         <WindowChrome CaptionHeight="44" ResizeBorderThickness="6" GlassFrameThickness="0,0,0,1" CornerRadius="0" UseAeroCaptionButtons="False" />
     </WindowChrome.WindowChrome>
@@ -24,10 +24,10 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <StackPanel Orientation="Horizontal" Margin="14,0,18,0" VerticalAlignment="Center">
+                <StackPanel Orientation="Horizontal" Margin="16,0,16,0" VerticalAlignment="Center">
                     <ContentPresenter ContentTemplate="{StaticResource LogoMark}" />
-                    <TextBlock Text="Glidecast" FontFamily="{StaticResource DisplayFont}" FontWeight="SemiBold" FontSize="14"
-                               VerticalAlignment="Center" Margin="10,0,0,0" />
+                    <TextBlock Text="Glidecast" FontFamily="{StaticResource DisplayFont}" FontWeight="SemiBold" FontSize="13"
+                               VerticalAlignment="Center" Margin="9,0,0,0" />
                 </StackPanel>
                 <ContentControl x:Name="TitleSlot" Grid.Column="1" Focusable="False" WindowChrome.IsHitTestVisibleInChrome="False" />
                 <StackPanel Grid.Column="2" Orientation="Horizontal" WindowChrome.IsHitTestVisibleInChrome="True">

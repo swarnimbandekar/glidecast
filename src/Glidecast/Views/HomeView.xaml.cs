@@ -2,6 +2,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using Glidecast.App.Services;
+using Glidecast.Capture;
 using Glidecast.Demo;
 using Microsoft.Win32;
 
@@ -16,16 +17,41 @@ public partial class HomeView : UserControl
     {
         _shell = shell;
         InitializeComponent();
-        var recent = ProjectStore.Recent();
-        RecentList.ItemsSource = recent;
-        NoRecent.Visibility = recent.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        RecentCount.Text = recent.Count > 0 ? recent.Count.ToString() : "";
+        ShowRecent();
         SaveFolder.Text = ProjectStore.UsingFallback
             ? $"Documents isn't writable for this app (Controlled Folder Access?), so recordings are saved to {ProjectStore.Root}"
             : $"Recordings are saved to {ProjectStore.Root}";
-        _ = ProjectStore.LoadDetailsAsync(recent);
+        _ = RecoverAsync();
         // Keep the hero pinned to the top (focus would otherwise scroll it).
         Loaded += (_, _) => Dispatcher.BeginInvoke(() => HeroScroll.ScrollToTop(), System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    /// <summary>Rebuilds takes that a crash or power loss interrupted, then refreshes the list.</summary>
+    private async Task RecoverAsync()
+    {
+        var dirs = RecordingRecovery.FindUnfinished(ProjectStore.Root);
+        if (dirs.Count == 0) return;
+        RecoveredBanner.Visibility = Visibility.Visible;
+        RecoveredText.Text = dirs.Count == 1 ? "Recovering a recording that was interrupted…" : $"Recovering {dirs.Count} interrupted recordings…";
+        int ok = await Task.Run(() => dirs.Count(d =>
+        {
+            try { return RecordingRecovery.Recover(d) != null; } catch { return false; }
+        }));
+        RecoveredText.Text = ok == 0
+            ? "An interrupted recording was found, but nothing usable had been saved."
+            : ok == 1 ? "Recovered a recording that was interrupted by a crash. It's in your recent list."
+            : $"Recovered {ok} recordings that were interrupted by a crash. They're in your recent list.";
+        ShowRecent();
+    }
+
+    private void ShowRecent()
+    {
+        var recent = ProjectStore.Recent();
+        RecentList.ItemsSource = recent;
+        NoRecent.Visibility = recent.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        RecentCount.Text = recent.Count.ToString();
+        RecentCountTag.Visibility = recent.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        _ = ProjectStore.LoadDetailsAsync(recent);
     }
 
     private async void Record_Click(object sender, RoutedEventArgs e)

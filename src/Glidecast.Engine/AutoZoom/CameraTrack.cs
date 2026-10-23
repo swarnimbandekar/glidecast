@@ -21,12 +21,34 @@ public sealed class CameraTrack
     private readonly double[] _scale, _cx, _cy;
     private readonly double _w, _h;
 
-    public CameraTrack(Project p, IReadOnlyList<ZoomSegment> segments, ZoomSettings? settings = null, CursorTrack? cursor = null)
+    /// <summary>Canvas this camera frames for; a cropped canvas (9:16, 1:1)
+    /// sees a <see cref="ViewW"/>×<see cref="ViewH"/> slice of the screen at 1×.</summary>
+    public CanvasAspect Aspect { get; }
+    public double ViewW { get; }
+    public double ViewH { get; }
+
+    public CameraTrack(Project p, IReadOnlyList<ZoomSegment> segments, ZoomSettings? settings = null, CursorTrack? cursor = null,
+        CanvasAspect aspect = CanvasAspect.Source)
     {
         var s = settings ?? new ZoomSettings();
         _w = p.Width;
         _h = p.Height;
         cursor ??= new CursorTrack(p, 0.5);
+        Aspect = aspect;
+        (ViewW, ViewH) = Canvas.View(aspect, p.Width, p.Height);
+        double vw = ViewW, vh = ViewH;
+        bool cropped = vw < _w - 1 || vh < _h - 1;
+        // A cropped canvas is already a close-up; tone zooms down so a 2× focus
+        // shows about as much screen area as it would on the full canvas.
+        double cropZoom = Math.Sqrt(vw * vh / (_w * _h)) * 1.2;
+        double ViewScale(double sc)
+        {
+            if (!cropped) return Math.Max(1, sc);
+            double v = sc * cropZoom;
+            return v < 1.05 ? 1 : v;
+        }
+        var typing = new TypingTrack(p, s.FollowTyping);
+        (double x, double y) Follow(double t) => typing.At(t, cursor) ?? cursor.At(t);
 
         double omegaZoom = s.Speed switch { ZoomSpeed.Gentle => 5.0, ZoomSpeed.Snappy => 11.0, _ => 7.5 };
         double omegaPan = omegaZoom * 0.85;
@@ -62,22 +84,23 @@ public sealed class CameraTrack
                 double tgtLog, tx, ty;
                 if (seg != null)
                 {
-                    double scale = Math.Max(1, seg.Scale);
+                    double scale = ViewScale(seg.Scale);
                     if (seg != active)
                     {
-                        (fx, fy) = ZoomAuthor.ClampCenter(seg.Cx, seg.Cy, _w, _h, scale);
+                        (fx, fy) = ZoomAuthor.ClampCenter(seg.Cx, seg.Cy, vw, vh, _w, _h, scale);
                         active = seg;
                     }
                     if (s.FollowCursor && t >= seg.Start)
-                    {
-                        // Dead-zone: the cursor may roam the middle ~60% of the view freely.
-                        var (mx, my) = cursor.At(t);
-                        double dzx = _w / (2 * scale) * 0.6, dzy = _h / (2 * scale) * 0.6;
-                        if (mx > fx + dzx) fx = mx - dzx; else if (mx < fx - dzx) fx = mx + dzx;
-                        if (my > fy + dzy) fy = my - dzy; else if (my < fy - dzy) fy = my + dzy;
-                        (fx, fy) = ZoomAuthor.ClampCenter(fx, fy, _w, _h, scale);
-                    }
+                        (fx, fy) = DeadZone(fx, fy, Follow(t), scale, 0.6);
                     tgtLog = Math.Log(scale);
+                    tx = fx; ty = fy;
+                }
+                else if (cropped)
+                {
+                    // A slice of the screen can't just sit in the middle: keep the action in it.
+                    if (active != null) active = null;
+                    (fx, fy) = DeadZone(fx, fy, Follow(t), 1, 0.45);
+                    tgtLog = 0;
                     tx = fx; ty = fy;
                 }
                 else
@@ -94,21 +117,32 @@ public sealed class CameraTrack
                 // Guarantee: while zoomed and following, the cursor never leaves
                 // the frame, however fast it moves (the spring alone can lag).
                 double cur = Math.Exp(logS);
-                if (s.FollowCursor && cur > 1.02)
+                if (s.FollowCursor && (cur > 1.02 || cropped))
                 {
-                    var (mx, my) = cursor.At(t);
-                    double hx = _w / (2 * cur) * 0.88, hy = _h / (2 * cur) * 0.88;
+                    var (mx, my) = Follow(t);
+                    double hx = vw / (2 * cur) * 0.88, hy = vh / (2 * cur) * 0.88;
                     if (mx > cx + hx) cx = mx - hx; else if (mx < cx - hx) cx = mx + hx;
                     if (my > cy + hy) cy = my - hy; else if (my < cy - hy) cy = my + hy;
                 }
             }
 
             double sc = Math.Max(1, Math.Exp(logS));
-            var (ccx, ccy) = ZoomAuthor.ClampCenter(cx, cy, _w, _h, sc);
+            var (ccx, ccy) = ZoomAuthor.ClampCenter(cx, cy, vw, vh, _w, _h, sc);
             _scale[i] = sc;
             _cx[i] = ccx;
             _cy[i] = ccy;
         }
+    }
+
+    /// <summary>Dead-zone follow: the point may roam the middle <paramref name="zone"/>
+    /// of the view freely; beyond that the view center is dragged along.</summary>
+    private (double, double) DeadZone(double fx, double fy, (double x, double y) pt, double scale, double zone)
+    {
+        double dzx = ViewW / (2 * scale) * zone, dzy = ViewH / (2 * scale) * zone;
+        var (mx, my) = pt;
+        if (mx > fx + dzx) fx = mx - dzx; else if (mx < fx - dzx) fx = mx + dzx;
+        if (my > fy + dzy) fy = my - dzy; else if (my < fy - dzy) fy = my + dzy;
+        return ZoomAuthor.ClampCenter(fx, fy, ViewW, ViewH, _w, _h, scale);
     }
 
     /// <summary>A track that never zooms.</summary>
@@ -141,7 +175,36 @@ public sealed class CameraTrack
         var (s0, x0, y0) = At(tMs - 8);
         var (s1, x1, y1) = At(tMs + 8);
         double dz = Math.Abs(Math.Log(s1) - Math.Log(s0));
-        double dp = Math.Sqrt((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0)) * s1 / _w;
+        double dp = Math.Sqrt((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0)) * s1 / ViewW;
         return (dz + dp) / 0.016;
+    }
+}
+
+/// <summary>
+/// Where the user is typing: the latest caret sample, while it is fresher than
+/// the last mouse movement. Lets the camera follow the words instead of an
+/// idle mouse pointer.
+/// </summary>
+internal sealed class TypingTrack
+{
+    private const double FreshMs = 900;
+    private readonly CaretEvent[] _c;
+
+    public TypingTrack(Project p, bool enabled) =>
+        _c = enabled ? (p.Carets ?? new()).OrderBy(k => k.T).ToArray() : Array.Empty<CaretEvent>();
+
+    public (double x, double y)? At(double tMs, CursorTrack cursor)
+    {
+        if (_c.Length == 0 || tMs < _c[0].T) return null;
+        int lo = 0, hi = _c.Length - 1;
+        while (lo < hi)
+        {
+            int mid = (lo + hi + 1) / 2;
+            if (_c[mid].T <= tMs) lo = mid; else hi = mid - 1;
+        }
+        var k = _c[lo];
+        double age = tMs - k.T;
+        if (age > FreshMs || cursor.StillFor(tMs) < age) return null; // the mouse moved more recently
+        return (k.X + k.W / 2.0, k.Y + k.H / 2.0);
     }
 }

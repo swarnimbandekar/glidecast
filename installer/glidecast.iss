@@ -50,7 +50,9 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
+#ifndef BundledFFmpeg
 Name: "ffmpeg"; Description: "Install FFmpeg with winget (required to record and export; skipped if already installed)"; GroupDescription: "Components:"; Check: not FFmpegInstalled
+#endif
 
 [Files]
 Source: "{#PublishDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -62,9 +64,11 @@ Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
 
 [Run]
+#ifndef BundledFFmpeg
 Filename: "{localappdata}\Microsoft\WindowsApps\winget.exe"; \
   Parameters: "install --id Gyan.FFmpeg.Essentials -e --accept-source-agreements --accept-package-agreements --disable-interactivity"; \
   StatusMsg: "Installing FFmpeg (this can take a minute)..."; Tasks: ffmpeg; Flags: runhidden waituntilterminated skipifdoesntexist
+#endif
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
 
 [Code]

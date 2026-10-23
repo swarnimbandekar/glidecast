@@ -17,6 +17,7 @@
   <ItemGroup>
     <Resource Include="Assets\glidecast.ico" />
     <Resource Include="Assets\logo-64.png" />
+    <Resource Include="Fonts\*.ttf" />
   </ItemGroup>
 
   <ItemGroup>

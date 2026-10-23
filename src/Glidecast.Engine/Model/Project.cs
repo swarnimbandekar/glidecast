@@ -29,6 +29,11 @@ public sealed class Project
     public List<MoveEvent> Moves { get; set; } = new();
     public List<ClickEvent> Clicks { get; set; } = new();
     public List<KeyEvent> Keys { get; set; } = new();
+    /// <summary>Text-caret samples taken while typing (sparse, ~8 Hz).</summary>
+    public List<CaretEvent> Carets { get; set; } = new();
+
+    /// <summary>Step numbers, highlights, arrows and callouts on the timeline.</summary>
+    public List<Annotation>? Annotations { get; set; }
 
     /// <summary>Hand-edited zoom focuses. Null means "use the auto-authored
     /// timeline"; once the user edits zooms in the editor this is filled in and
@@ -80,9 +85,9 @@ public sealed class Project
 
     /// <summary>The camera motion to render: hand-edited segments when present,
     /// otherwise the auto-authored ones.</summary>
-    public CameraTrack BuildCamera() =>
+    public CameraTrack BuildCamera(CanvasAspect? aspect = null) =>
         new(this, ZoomSegments ?? ZoomAuthor.BuildSegments(this, Zoom), Zoom,
-            new CursorTrack(this, Style?.CursorSmoothing ?? 0.5));
+            new CursorTrack(this, Style?.CursorSmoothing ?? 0.5), aspect ?? Style?.Aspect ?? CanvasAspect.Source);
 
     /// <summary>Linear-interpolated cursor position (screen pixels) at time t.</summary>
     public (double x, double y) CursorAt(double tMs)
@@ -120,6 +125,37 @@ public struct ClickEvent
     public int Y { get; set; }
     public int Button { get; set; } // 0 = left, 1 = right, 2 = middle
     public int Count { get; set; }  // 1 single, 2 double
+    /// <summary>The UI element under the click (UI Automation), if it could be read.</summary>
+    public UiElement? Element { get; set; }
+    /// <summary>A meaningful enclosing panel (menu, list, dialog…) of <see cref="Element"/>.</summary>
+    public UiElement? Container { get; set; }
+}
+
+/// <summary>Screen-space bounds (project pixels) of a UI element, with its
+/// accessible name and role, e.g. ("Save", "button").</summary>
+public sealed class UiElement
+{
+    public int X { get; set; }
+    public int Y { get; set; }
+    public int W { get; set; }
+    public int H { get; set; }
+    public string? Name { get; set; }
+    public string? Role { get; set; }
+
+    public double Cx => X + W / 2.0;
+    public double Cy => Y + H / 2.0;
+    public bool Contains(double x, double y) => x >= X && x <= X + W && y >= Y && y <= Y + H;
+    public UiElement Offset(int dx, int dy) => new() { X = X - dx, Y = Y - dy, W = W, H = H, Name = Name, Role = Role };
+}
+
+/// <summary>Where text was being typed: the caret (or focused field) at time T.</summary>
+public struct CaretEvent
+{
+    public double T { get; set; }
+    public int X { get; set; }
+    public int Y { get; set; }
+    public int W { get; set; }
+    public int H { get; set; }
 }
 
 public struct KeyEvent

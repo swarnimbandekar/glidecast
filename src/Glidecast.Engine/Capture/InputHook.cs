@@ -16,7 +16,10 @@ public sealed class InputHook : IDisposable
     private readonly List<MoveEvent> _moves = new();
     private readonly List<ClickEvent> _clicks = new();
     private readonly List<KeyEvent> _keys = new();
+    private readonly List<CaretEvent> _carets = new();
     private readonly object _gate = new();
+    private UiProbe? _probe;
+    private double _lastCaretProbeMs = -1000;
 
     private Thread? _thread;
     private uint _threadId;
@@ -30,8 +33,28 @@ public sealed class InputHook : IDisposable
 
     public InputHook(Stopwatch clock) => _clock = clock;
 
+    /// <summary>Read the UI element under each click and the caret while
+    /// typing (UI Automation). Set before <see cref="Start"/>.</summary>
+    public bool ProbeUi { get; set; } = true;
+
     public void Start()
     {
+        if (ProbeUi)
+        {
+            _probe = new UiProbe();
+            _probe.ClickResolved = (i, el, panel) =>
+            {
+                lock (_gate)
+                {
+                    if (i >= _clicks.Count) return;
+                    var c = _clicks[i];
+                    c.Element = el;
+                    c.Container = panel;
+                    _clicks[i] = c;
+                }
+            };
+            _probe.CaretResolved = k => { lock (_gate) _carets.Add(k); };
+        }
         _thread = new Thread(ThreadMain) { IsBackground = true, Name = "Glidecast-InputHook" };
         _thread.SetApartmentState(ApartmentState.STA);
         _thread.Start();
@@ -100,6 +123,7 @@ public sealed class InputHook : IDisposable
                     count = prev.Count + 1;
             }
             _clicks.Add(new ClickEvent { T = t, X = x, Y = y, Button = button, Count = count });
+            if (count == 1) _probe?.Click(_clicks.Count - 1, x, y);
         }
     }
 
@@ -116,14 +140,25 @@ public sealed class InputHook : IDisposable
                 double t = _clock.Elapsed.TotalMilliseconds;
                 string sym = KeyName(data.vkCode, data.scanCode);
                 lock (_gate) _keys.Add(new KeyEvent { T = t, Symbol = sym, Down = down });
+                // Sample the caret a little after typing (the app moves it on key-down).
+                if (down && _probe != null && !IsModifier(data.vkCode) && t - _lastCaretProbeMs > 120)
+                {
+                    _lastCaretProbeMs = t;
+                    _probe.Caret(t);
+                }
             }
         }
         return Win32.CallNextHookEx(_keyHook, nCode, wParam, lParam);
     }
 
+    // Shift, Ctrl, Alt, Win (left/right variants included).
+    private static bool IsModifier(uint vk) => vk is >= 0x10 and <= 0x12 or >= 0xA0 and <= 0xA5 or 0x5B or 0x5C;
+
     private static string KeyName(uint vk, uint scan)
     {
         var buf = new char[64];
+        // Synthesized input (remote desktop, automation, some macro keyboards) carries no scan code.
+        if (scan == 0) scan = Win32.MapVirtualKey(vk, 0 /* MAPVK_VK_TO_VSC */);
         int lParam = (int)(scan << 16);
         int n = Win32.GetKeyNameTextW(lParam, buf, buf.Length);
         if (n > 0) return new string(buf, 0, n);
@@ -135,6 +170,8 @@ public sealed class InputHook : IDisposable
         if (_threadId != 0)
             Win32.PostThreadMessage(_threadId, Win32.WM_QUIT, IntPtr.Zero, IntPtr.Zero);
         _thread?.Join(2000);
+        _probe?.Dispose(); // finishes queued lookups
+        _probe = null;
     }
 
     /// <summary>Copies the tracks into the project, shifting positions so they
@@ -144,8 +181,37 @@ public sealed class InputHook : IDisposable
         lock (_gate)
         {
             p.Moves = _moves.Select(m => new MoveEvent { T = m.T, X = m.X - originX, Y = m.Y - originY }).ToList();
-            p.Clicks = _clicks.Select(c => new ClickEvent { T = c.T, X = c.X - originX, Y = c.Y - originY, Button = c.Button, Count = c.Count }).ToList();
+            p.Clicks = _clicks.Select(c => Shift(c, originX, originY)).ToList();
             p.Keys = new List<KeyEvent>(_keys);
+            p.Carets = _carets.Select(k => new CaretEvent { T = k.T, X = k.X - originX, Y = k.Y - originY, W = k.W, H = k.H }).ToList();
+        }
+    }
+
+    private static ClickEvent Shift(ClickEvent c, int dx, int dy) => new()
+    {
+        T = c.T, X = c.X - dx, Y = c.Y - dy, Button = c.Button, Count = c.Count,
+        Element = c.Element?.Offset(dx, dy), Container = c.Container?.Offset(dx, dy),
+    };
+
+    /// <summary>Position in each track up to which events have been handed out by <see cref="TakeNew"/>.</summary>
+    public sealed class Cursor { public int Moves, Clicks, Keys, Carets; }
+
+    /// <summary>Events recorded since the last call (for the crash-recovery
+    /// journal). Clicks are held back until <paramref name="settledBeforeMs"/>
+    /// so their UI element lookup has finished.</summary>
+    public (List<MoveEvent> moves, List<ClickEvent> clicks, List<KeyEvent> keys, List<CaretEvent> carets)
+        TakeNew(Cursor at, double settledBeforeMs)
+    {
+        lock (_gate)
+        {
+            var m = _moves.GetRange(at.Moves, _moves.Count - at.Moves);
+            int ce = at.Clicks;
+            while (ce < _clicks.Count && _clicks[ce].T < settledBeforeMs) ce++;
+            var c = _clicks.GetRange(at.Clicks, ce - at.Clicks);
+            var k = _keys.GetRange(at.Keys, _keys.Count - at.Keys);
+            var r = _carets.GetRange(at.Carets, _carets.Count - at.Carets);
+            at.Moves = _moves.Count; at.Clicks = ce; at.Keys = _keys.Count; at.Carets = _carets.Count;
+            return (m, c, k, r);
         }
     }
 

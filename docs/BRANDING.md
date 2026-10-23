@@ -4,15 +4,20 @@
 
 **Name:** Glidecast (one word, capital G).
 **Idea:** the camera glides to whatever your cursor is doing. The mark is a
-violet→blue tile with focus brackets and a cursor gliding into frame.
+flat blue tile with focus brackets and a cursor gliding into frame.
 
 | Token | Value |
 |---|---|
-| Violet | `#8A5CFF` |
-| Blue | `#3D7BFF` / `#4F8CFF` |
-| Accent (UI) | `#7C5CFF` |
-| Ink (background) | `#0E1013` |
-| Typeface | Segoe UI Variable Display / Text |
+| Accent (blue) | `#3D7EFF` (hover `#5A92FF`, tile shade `#2F6BE8`) |
+| Ink (background) | `#0F0F10` |
+| Surfaces | `#151516` / `#1B1B1D` / `#232325` |
+| Text | `#EDEDEF`, secondary `#9B9BA1` |
+| Record / danger | `#E5484D` |
+| Default video background | "Cobalt" gradient `#2F5FD0` → `#0B1226` |
+| Typeface | Inter (bundled, SIL OFL) |
+
+The UI uses no gradients or glows; the accent is the only saturated color.
+All UI tokens live in `src/Glidecast/Theme.xaml`.
 
 ## Regenerating assets
 

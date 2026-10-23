@@ -15,6 +15,10 @@ namespace Glidecast.Capture;
 /// late: playback maps each moment to the frame captured then, so the picture
 /// stays in sync with the cursor, clicks and zooms. Encoding runs on its own
 /// thread with a small buffer pool so a slow encoder can't stall capture.
+///
+/// While recording, the file is a fragmented MP4 (a fragment every ~2 s), so
+/// a crash or power loss leaves a playable video up to the last fragment; on a
+/// clean stop it is remuxed into a regular, seekable MP4.
 /// </summary>
 public sealed class ScreenRecorder : IDisposable
 {
@@ -60,11 +64,17 @@ public sealed class ScreenRecorder : IDisposable
     /// <summary>Input-clock time (ms) at which each written frame was captured.</summary>
     public List<double> FrameTimes { get { lock (_times) return new List<double>(_times); } }
 
+    /// <summary>Timestamps of frames captured since index <paramref name="from"/> (for the journal).</summary>
+    public List<double> FrameTimesSince(int from)
+    {
+        lock (_times) return from >= _times.Count ? new List<double>() : _times.GetRange(from, _times.Count - from);
+    }
+
     public void Start()
     {
         // Intermediate file: favour encode speed; quality stays high via low CRF.
         string args = string.Create(System.Globalization.CultureInfo.InvariantCulture,
-            $"-y -f rawvideo -pixel_format bgra -video_size {Width}x{Height} -framerate {Fps} -i - -an -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -crf 17 \"{_outPath}\"");
+            $"-y -f rawvideo -pixel_format bgra -video_size {Width}x{Height} -framerate {Fps} -i - -an -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -crf 17 -g {Math.Max(1, (int)Math.Round(Fps * 2))} -movflags +frag_keyframe+empty_moov+default_base_moof \"{_outPath}\"");
         _ff = FFmpeg.Start(args, redirectIn: true, redirectOut: false);
         for (int i = 0; i < PoolSize; i++) _free.Add(new byte[Width * Height * 4]);
         _running = true;
@@ -152,6 +162,27 @@ public sealed class ScreenRecorder : IDisposable
         Win32.timeEndPeriod(1);
         try { _ff?.StandardInput.BaseStream.Flush(); _ff?.StandardInput.Close(); } catch { }
         _ff?.WaitForExit(30000);
+        Finish(_outPath);
+    }
+
+    /// <summary>Rewrites a fragmented capture as a regular MP4 with its index up
+    /// front (fast seeking for the editor). Stream copy: no quality loss.
+    /// Leaves the fragmented file in place if anything goes wrong.</summary>
+    public static void Finish(string video)
+    {
+        if (!File.Exists(video)) return;
+        string tmp = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(video))!, "source.remux.mp4");
+        try
+        {
+            FFmpeg.Run($"-y -hide_banner -loglevel error -i \"{video}\" -map 0 -c copy -movflags +faststart \"{tmp}\"", 300000);
+            if (File.Exists(tmp) && new FileInfo(tmp).Length > 0)
+                File.Move(tmp, video, overwrite: true);
+        }
+        catch { }
+        finally
+        {
+            try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
+        }
     }
 
     public void Dispose() => Stop();

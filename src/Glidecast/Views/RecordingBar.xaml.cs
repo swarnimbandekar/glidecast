@@ -66,9 +66,9 @@ public partial class RecordingBar : Window
         var grid = new Grid();
         grid.Children.Add(new System.Windows.Shapes.Ellipse
         {
-            Fill = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(0xE6, 0x15, 0x17, 0x1C)),
-            Stroke = (System.Windows.Media.Brush)FindResource("AccentGradient"),
-            StrokeThickness = 3,
+            Fill = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(0xEB, 0x1B, 0x1B, 0x1D)),
+            Stroke = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF)),
+            StrokeThickness = 1.5,
         });
         grid.Children.Add(_countdownText);
         _countdownWindow = new Window

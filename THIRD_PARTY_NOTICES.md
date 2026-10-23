@@ -10,13 +10,25 @@ third-party software.
 | [.NET runtime & WPF](https://github.com/dotnet/runtime) | MIT | Included in self-contained builds. |
 | [SkiaSharp](https://github.com/mono/SkiaSharp) | MIT | 2D rendering for the compositor. |
 | [Skia](https://skia.org/) (native, via SkiaSharp) | BSD-3-Clause | |
+| [Inter](https://github.com/rsms/inter) 3.19 by Rasmus Andersson | SIL Open Font License 1.1 | UI typeface, embedded in `Glidecast.exe` (`src/Glidecast/Fonts`). |
+
+## FFmpeg
+
+[FFmpeg](https://ffmpeg.org/) (LGPL-2.1+ or GPL, depending on the build) is
+used as a separate program (`ffmpeg.exe`) for encoding and decoding; Glidecast
+does not link to it. Release builds made with `build.ps1` bundle an
+`ffmpeg.exe` next to `Glidecast.exe`, with that build's license as
+`FFMPEG-LICENSE.txt`. The source code of the bundled build is available from
+its publisher (for the gyan.dev builds, see https://www.gyan.dev/ffmpeg/builds/
+and https://github.com/FFmpeg/FFmpeg). Builds made with `-NoFFmpeg` don't
+include it; the installer then offers to install it from winget
+(`Gyan.FFmpeg.Essentials`).
 
 ## Used but not bundled
 
 | Component | License | Notes |
 |---|---|---|
-| [FFmpeg](https://ffmpeg.org/) | LGPL-2.1+ / GPL depending on build | Glidecast runs `ffmpeg.exe` as a separate program for encoding and decoding. It is **not** shipped with Glidecast; the installer can install it from winget (`Gyan.FFmpeg.Essentials`), and its own license applies. |
-| Segoe UI / Segoe Fluent Icons | Microsoft | System fonts used by the UI; not redistributed. |
+| Segoe Fluent Icons / Segoe UI | Microsoft | System icon font (and text fallback) used by the UI; not redistributed. |
 
 "Windows" is a trademark of Microsoft Corporation. All other trademarks are
 the property of their respective owners.

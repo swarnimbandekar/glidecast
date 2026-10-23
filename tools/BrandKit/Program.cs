@@ -1,13 +1,16 @@
 using SkiaSharp;
 
-// Glidecast brand kit. The mark: a violet→blue tile, focus brackets, and a
+// Glidecast brand kit. The mark: a flat blue tile, focus brackets, and a
 // cursor gliding into frame — "the camera follows your cursor".
 string outDir = args.Length > 0 ? args[0] : "assets";
 Directory.CreateDirectory(outDir);
 
-var violet = new SKColor(0x8A, 0x5C, 0xFF);
-var blue = new SKColor(0x3D, 0x7B, 0xFF);
-var ink = new SKColor(0x0E, 0x10, 0x13);
+// Same tokens as the app (src/Glidecast/Theme.xaml).
+var blue = new SKColor(0x3D, 0x7E, 0xFF);
+var blueDeep = new SKColor(0x2F, 0x6B, 0xE8);
+var ink = new SKColor(0x0F, 0x0F, 0x10);
+var subtext = new SKColor(0xB4, 0xB4, 0xBA);
+var muted = new SKColor(0x80, 0x80, 0x86);
 
 // ---------------------------------------------------------------- the mark
 void DrawMark(SKCanvas c, float size, bool detail)
@@ -17,18 +20,10 @@ void DrawMark(SKCanvas c, float size, bool detail)
     var tile = new SKRoundRect(new SKRect(8, 8, 248, 248), 58, 58);
     using (var bg = new SKPaint { IsAntialias = true })
     {
-        bg.Shader = SKShader.CreateLinearGradient(new SKPoint(8, 8), new SKPoint(248, 248),
-            new[] { violet, blue }, null, SKShaderTileMode.Clamp);
+        // One hue, top to bottom: reads as flat, keeps a little depth at icon sizes.
+        bg.Shader = SKShader.CreateLinearGradient(new SKPoint(0, 8), new SKPoint(0, 248),
+            new[] { blue, blueDeep }, null, SKShaderTileMode.Clamp);
         c.DrawRoundRect(tile, bg);
-    }
-    using (var sheen = new SKPaint { IsAntialias = true })
-    {
-        sheen.Shader = SKShader.CreateRadialGradient(new SKPoint(70, 40), 220,
-            new[] { new SKColor(255, 255, 255, 70), new SKColor(255, 255, 255, 0) }, null, SKShaderTileMode.Clamp);
-        c.Save();
-        c.ClipRoundRect(tile, antialias: true);
-        c.DrawRect(new SKRect(0, 0, 256, 256), sheen);
-        c.Restore();
     }
 
     if (detail)
@@ -72,7 +67,7 @@ void DrawMark(SKCanvas c, float size, bool detail)
     arrow.MoveTo(ox + pts[0].X * s, oy + pts[0].Y * s);
     foreach (var (x, y) in pts.Skip(1)) arrow.LineTo(ox + x * s, oy + y * s);
     arrow.Close();
-    using (var sh = new SKPaint { IsAntialias = true, Color = new SKColor(0x1C, 0x10, 0x5A, 110), MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, 7) })
+    using (var sh = new SKPaint { IsAntialias = true, Color = new SKColor(0x08, 0x1A, 0x4D, 110), MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, 7) })
     {
         c.Save();
         c.Translate(3, 7);
@@ -133,19 +128,20 @@ foreach (int sz in new[] { 64, 256, 512, 1024 })
     File.WriteAllBytes(Path.Combine(outDir, $"logo-{sz}.png"), Png(Mark(sz)));
 
 // ---------------------------------------------------------------- wordmark helpers
-SKTypeface Face(SKFontStyleWeight w) =>
-    SKTypeface.FromFamilyName("Segoe UI Variable Display", w, SKFontStyleWidth.Normal, SKFontStyleSlant.Upright)
-    ?? SKTypeface.FromFamilyName("Segoe UI", w, SKFontStyleWidth.Normal, SKFontStyleSlant.Upright);
+// The app's typeface (Inter, bundled in src/Glidecast/Fonts); Segoe UI if run elsewhere.
+SKTypeface Face(SKFontStyleWeight w)
+{
+    string file = Path.Combine("src", "Glidecast", "Fonts", w >= SKFontStyleWeight.SemiBold ? "Inter-SemiBold.ttf" : "Inter-Regular.ttf");
+    return (File.Exists(file) ? SKTypeface.FromFile(file) : null)
+        ?? SKTypeface.FromFamilyName("Segoe UI", w, SKFontStyleWidth.Normal, SKFontStyleSlant.Upright);
+}
 
 void Backdrop(SKCanvas c, int w, int h)
 {
     c.Clear(ink);
     using var glow = new SKPaint();
-    glow.Shader = SKShader.CreateRadialGradient(new SKPoint(w * 0.18f, h * 0.05f), w * 0.7f,
-        new[] { new SKColor(0x7C, 0x5C, 0xFF, 120), new SKColor(0x7C, 0x5C, 0xFF, 0) }, null, SKShaderTileMode.Clamp);
-    c.DrawRect(new SKRect(0, 0, w, h), glow);
-    glow.Shader = SKShader.CreateRadialGradient(new SKPoint(w * 0.95f, h * 1.0f), w * 0.6f,
-        new[] { new SKColor(0x3D, 0x7B, 0xFF, 90), new SKColor(0x3D, 0x7B, 0xFF, 0) }, null, SKShaderTileMode.Clamp);
+    glow.Shader = SKShader.CreateRadialGradient(new SKPoint(w * 0.2f, h * 0.1f), w * 0.75f,
+        new[] { blue.WithAlpha(46), blue.WithAlpha(0) }, null, SKShaderTileMode.Clamp);
     c.DrawRect(new SKRect(0, 0, w, h), glow);
 }
 
@@ -161,10 +157,10 @@ void Backdrop(SKCanvas c, int w, int h)
     c.Restore();
     using var title = new SKPaint { IsAntialias = true, Color = SKColors.White, TextSize = 112, Typeface = Face(SKFontStyleWeight.SemiBold) };
     c.DrawText("Glidecast", 420, 318, title);
-    using var sub = new SKPaint { IsAntialias = true, Color = new SKColor(0xC9, 0xBC, 0xFF), TextSize = 38, Typeface = Face(SKFontStyleWeight.Normal) };
+    using var sub = new SKPaint { IsAntialias = true, Color = subtext, TextSize = 38, Typeface = Face(SKFontStyleWeight.Normal) };
     c.DrawText("Screen recordings that zoom, glide and", 424, 384, sub);
     c.DrawText("follow your cursor — automatically.", 424, 432, sub);
-    using var tag = new SKPaint { IsAntialias = true, Color = new SKColor(0x8B, 0x92, 0xA1), TextSize = 26, Typeface = Face(SKFontStyleWeight.Normal) };
+    using var tag = new SKPaint { IsAntialias = true, Color = muted, TextSize = 26, Typeface = Face(SKFontStyleWeight.Normal) };
     c.DrawText("Free & open source  ·  Windows  ·  MIT", 424, 500, tag);
     File.WriteAllBytes(Path.Combine(outDir, "banner.png"), Png(bmp));
 }
@@ -181,7 +177,7 @@ void Backdrop(SKCanvas c, int w, int h)
     c.Restore();
     using var title = new SKPaint { IsAntialias = true, Color = SKColors.White, TextSize = 52, Typeface = Face(SKFontStyleWeight.SemiBold), TextAlign = SKTextAlign.Center };
     c.DrawText("Glidecast", w / 2f, 440, title);
-    using var sub = new SKPaint { IsAntialias = true, Color = new SKColor(0xC9, 0xBC, 0xFF), TextSize = 22, Typeface = Face(SKFontStyleWeight.Normal), TextAlign = SKTextAlign.Center };
+    using var sub = new SKPaint { IsAntialias = true, Color = subtext, TextSize = 22, Typeface = Face(SKFontStyleWeight.Normal), TextAlign = SKTextAlign.Center };
     c.DrawText("auto-zoom screen recorder", w / 2f, 482, sub);
     File.WriteAllBytes(Path.Combine(outDir, "installer-side.png"), Png(bmp));
 }

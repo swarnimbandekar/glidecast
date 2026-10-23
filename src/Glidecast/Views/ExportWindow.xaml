@@ -6,29 +6,35 @@
         Background="{StaticResource Panel}" Foreground="{StaticResource Text}"
         FontFamily="{StaticResource UiFont}" FontSize="13" UseLayoutRounding="True">
     <WindowChrome.WindowChrome>
-        <WindowChrome CaptionHeight="56" ResizeBorderThickness="0" GlassFrameThickness="0,0,0,1" UseAeroCaptionButtons="False" />
+        <WindowChrome CaptionHeight="64" ResizeBorderThickness="0" GlassFrameThickness="0,0,0,1" UseAeroCaptionButtons="False" />
     </WindowChrome.WindowChrome>
     <Border BorderBrush="{StaticResource Border}" BorderThickness="1">
         <StackPanel>
-            <DockPanel Height="56" Margin="22,0,8,0">
+            <DockPanel Height="64" Margin="24,0,12,0">
                 <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE8BB;" FontSize="11" Click="Cancel_Click"
                         WindowChrome.IsHitTestVisibleInChrome="True" ToolTip="Close" />
-                <Border Width="32" Height="32" CornerRadius="9" Background="{StaticResource AccentGradient}" VerticalAlignment="Center">
-                    <TextBlock Style="{StaticResource Icon}" Text="&#xE898;" Foreground="White" FontSize="14" />
+                <Border Width="32" Height="32" CornerRadius="7" Background="{StaticResource Panel3}" BorderBrush="{StaticResource BorderStrong}" BorderThickness="1" VerticalAlignment="Center">
+                    <TextBlock Style="{StaticResource Icon}" Text="&#xE898;" FontSize="13" />
                 </Border>
                 <StackPanel VerticalAlignment="Center" Margin="12,0,0,0">
-                    <TextBlock Text="Export video" Style="{StaticResource Title}" FontSize="15" />
-                    <TextBlock x:Name="Summary" Style="{StaticResource Hint}" FontSize="11.5" />
+                    <TextBlock Text="Export video" Style="{StaticResource Title}" FontSize="14" />
+                    <TextBlock x:Name="Summary" Style="{StaticResource Hint}" Foreground="{StaticResource Muted}" Margin="0,1,0,0" />
                 </StackPanel>
             </DockPanel>
             <Rectangle Height="1" Fill="{StaticResource Border}" />
 
-            <StackPanel x:Name="Options" Margin="24,6,24,0">
-                <TextBlock Text="RESOLUTION" Style="{StaticResource SectionLabel}" />
+            <StackPanel x:Name="Options" Margin="24,0,24,0">
+                <TextBlock Text="Canvas" Style="{StaticResource SectionLabel}" />
+                <Border Style="{StaticResource SegmentHost}">
+                    <StackPanel x:Name="AspectPanel" Orientation="Horizontal" />
+                </Border>
+                <TextBlock x:Name="AspectInfo" Style="{StaticResource Hint}" Margin="0,8,0,0" TextWrapping="Wrap" />
+
+                <TextBlock Text="Resolution" Style="{StaticResource SectionLabel}" />
                 <Border Style="{StaticResource SegmentHost}">
                     <StackPanel x:Name="ResPanel" Orientation="Horizontal" />
                 </Border>
-                <TextBlock x:Name="ResInfo" Style="{StaticResource Hint}" FontFamily="{StaticResource MonoFont}" Margin="2,8,0,0" />
+                <TextBlock x:Name="ResInfo" Style="{StaticResource Hint}" Typography.NumeralAlignment="Tabular" Margin="0,8,0,0" />
 
                 <Grid Margin="0,4,0,0">
                     <Grid.ColumnDefinitions>
@@ -37,7 +43,7 @@
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <StackPanel>
-                        <TextBlock Text="FRAME RATE" Style="{StaticResource SectionLabel}" />
+                        <TextBlock Text="Frame rate" Style="{StaticResource SectionLabel}" />
                         <Border Style="{StaticResource SegmentHost}">
                             <StackPanel Orientation="Horizontal">
                                 <RadioButton x:Name="Fps24" Content="24" Style="{StaticResource Segment}" GroupName="fps" />
@@ -47,7 +53,7 @@
                         </Border>
                     </StackPanel>
                     <StackPanel Grid.Column="2">
-                        <TextBlock Text="QUALITY" Style="{StaticResource SectionLabel}" />
+                        <TextBlock Text="Quality" Style="{StaticResource SectionLabel}" />
                         <Border Style="{StaticResource SegmentHost}">
                             <StackPanel Orientation="Horizontal">
                                 <RadioButton x:Name="QDraft" Content="Draft" Style="{StaticResource Segment}" GroupName="q" AutomationProperties.Name="Draft (fast)" />
@@ -58,9 +64,19 @@
                     </StackPanel>
                 </Grid>
 
-                <TextBlock Text="SAVE TO" Style="{StaticResource SectionLabel}" />
+                <TextBlock Text="Encoder" Style="{StaticResource SectionLabel}" />
+                <Border Style="{StaticResource SegmentHost}">
+                    <StackPanel Orientation="Horizontal">
+                        <RadioButton x:Name="EncAuto" Content="Auto" Style="{StaticResource Segment}" GroupName="enc" IsChecked="True" />
+                        <RadioButton x:Name="EncGpu" Content="GPU" Style="{StaticResource Segment}" GroupName="enc" IsEnabled="False" />
+                        <RadioButton x:Name="EncCpu" Content="CPU" Style="{StaticResource Segment}" GroupName="enc" />
+                    </StackPanel>
+                </Border>
+                <TextBlock x:Name="EncInfo" Style="{StaticResource Hint}" Margin="0,8,0,0" TextWrapping="Wrap" Text="Checking for GPU encoders…" />
+
+                <TextBlock Text="Save to" Style="{StaticResource SectionLabel}" />
                 <DockPanel>
-                    <Button DockPanel.Dock="Right" Margin="8,0,0,0" Click="Browse_Click" Padding="12,8">
+                    <Button DockPanel.Dock="Right" Margin="8,0,0,0" Click="Browse_Click" Padding="12,0">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Style="{StaticResource Icon}" Text="&#xE838;" FontSize="12" Margin="0,0,7,0" />
                             <TextBlock Text="Browse" />
@@ -70,10 +86,10 @@
                 </DockPanel>
             </StackPanel>
 
-            <Border x:Name="ProgressPanel" Margin="24,22,24,0" Background="{StaticResource Panel2}" CornerRadius="12" Padding="16" Visibility="Collapsed">
+            <Border x:Name="ProgressPanel" Margin="24,24,24,0" Background="{StaticResource Panel2}" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="8" Padding="16" Visibility="Collapsed">
                 <StackPanel>
                     <DockPanel>
-                        <TextBlock x:Name="ProgressPct" DockPanel.Dock="Right" FontFamily="{StaticResource MonoFont}" FontSize="22" FontWeight="SemiBold" />
+                        <TextBlock x:Name="ProgressPct" DockPanel.Dock="Right" FontSize="20" FontWeight="SemiBold" Typography.NumeralAlignment="Tabular" VerticalAlignment="Center" />
                         <StackPanel>
                             <TextBlock x:Name="ProgressTitle" Text="Rendering" FontWeight="SemiBold" />
                             <TextBlock x:Name="ProgressText" Style="{StaticResource Hint}" Margin="0,2,0,0" />
@@ -83,7 +99,8 @@
                 </StackPanel>
             </Border>
 
-            <DockPanel Margin="24,22,24,22" LastChildFill="False">
+            <Rectangle Style="{StaticResource Divider}" Margin="0,24,0,0" />
+            <DockPanel Margin="24,16,24,16" LastChildFill="False">
                 <Button x:Name="OpenFolderButton" DockPanel.Dock="Left" Visibility="Collapsed" Click="ShowFolder_Click" Content="Show in folder" />
                 <Button x:Name="PlayButton" DockPanel.Dock="Left" Margin="8,0,0,0" Visibility="Collapsed" Click="PlayVideo_Click">
                     <StackPanel Orientation="Horizontal">
@@ -91,7 +108,7 @@
                         <TextBlock Text="Play" />
                     </StackPanel>
                 </Button>
-                <Button x:Name="ExportButton" DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}" Content="Export MP4" Padding="24,9" Click="Export_Click" />
+                <Button x:Name="ExportButton" DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}" Content="Export MP4" Padding="18,0" Click="Export_Click" />
                 <Button x:Name="CancelButton" DockPanel.Dock="Right" Content="Cancel" Margin="0,0,8,0" Click="Cancel_Click" Style="{StaticResource GhostButton}" />
             </DockPanel>
         </StackPanel>

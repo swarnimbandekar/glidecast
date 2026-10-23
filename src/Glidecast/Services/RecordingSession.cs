@@ -12,6 +12,7 @@ public sealed class RecordingSession
     private readonly Stopwatch _clock = new();
     private ScreenRecorder? _screen;
     private InputHook? _input;
+    private RecordingJournal? _journal;
 
     public string Directory { get; }
     public string ProjectFile => Path.Combine(Directory, "project.json");
@@ -31,6 +32,7 @@ public sealed class RecordingSession
         _clock.Start();
         _input.Start();
         _screen.Start();
+        _journal = new RecordingJournal(Directory, _screen, _input, _clock);
     }
 
     /// <summary>Stops capture and writes project.json. Clicks inside
@@ -65,7 +67,10 @@ public sealed class RecordingSession
             _input.CopyInto(p, _screen.Left, _screen.Top);
         }
 
+        LookLibrary.ApplyDefault(p);
         p.Save(ProjectFile);
+        _journal?.Complete();
+        Glidecast.Plugins.Hooks.Fire(Glidecast.Plugins.Hooks.AfterRecord, Directory);
         _screen.Dispose();
         _input.Dispose();
         return p;

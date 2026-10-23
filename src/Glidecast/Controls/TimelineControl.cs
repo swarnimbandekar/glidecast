@@ -23,35 +23,41 @@ public sealed class TimelineControl : FrameworkElement
     private const double FilmH = 50;
     private const double ZoomTop = FilmTop + FilmH + 10;
     private const double ZoomH = 42;
-    private const double InputTop = ZoomTop + ZoomH + 10;
+    private const double NoteTop = ZoomTop + ZoomH + 8;
+    private const double NoteH = 24;
+    private const double InputTop = NoteTop + NoteH + 8;
     private const double InputH = 18;
     private const double TotalH = InputTop + InputH + 12;
     private const double EdgeGrab = 8;
     private const double MinSegMs = 200;
 
-    private static readonly Brush BgBrush = Frozen("#121418");
-    private static readonly Brush LaneBrush = Frozen("#1A1D23");
-    private static readonly Brush TickBrush = Frozen("#2E333E");
-    private static readonly Brush LabelBrush = Frozen("#7E8594");
-    private static readonly Brush ClickBrush = Frozen("#F5B94A");
-    private static readonly Brush KeyBrush = Frozen("#3DD6B5");
-    private static readonly Brush PlayheadBrush = Frozen("#FF4D6A");
-    private static readonly Brush SegBrush = Gradient("#7C5CFF", "#4F8CFF", 1);
-    private static readonly Brush SegHoverBrush = Gradient("#8E72FF", "#679CFF", 1);
-    private static readonly Brush SegSelBrush = Gradient("#9A80FF", "#72A6FF", 1);
-    private static readonly Brush FilmShade = Frozen("#66000000");
-    private static readonly Pen SelPen = FrozenPen(Brushes.White, 2);
-    private static readonly Pen FilmEdge = FrozenPen(Frozen("#2A2F3A"), 1);
-    private static readonly Typeface Face = new(new FontFamily("Segoe UI Variable Text, Segoe UI"), FontStyles.Normal, FontWeights.SemiBold, FontStretches.Normal);
+    // Mirrors Theme.xaml: graphite lanes, blue zoom blocks.
+    private static readonly Brush BgBrush = Frozen("#151516");
+    private static readonly Brush LaneBrush = Frozen("#1B1B1D");
+    private static readonly Brush TickBrush = Frozen("#333336");
+    private static readonly Brush LabelBrush = Frozen("#6C6C72");
+    private static readonly Brush ClickBrush = Frozen("#FFB224");
+    private static readonly Brush KeyBrush = Frozen("#3DD68C");
+    private static readonly Brush PlayheadBrush = Frozen("#E5484D");
+    private static readonly Brush SegBrush = Frozen("#2F6BE8");
+    private static readonly Brush SegHoverBrush = Frozen("#3D7EFF");
+    private static readonly Brush SegSelBrush = Frozen("#4D8AFF");
+    private static readonly Brush FilmShade = Frozen("#80000000");
+    private static readonly Brush NoteBrush = Frozen("#FFB224");
+    private static readonly Brush NoteBoxBrush = Frozen("#3DD68C");
+    private static readonly Brush NoteTextBrush = Frozen("#E93D82");
+    private static readonly Pen SelPen = FrozenPen(Brushes.White, 1.5);
+    private static readonly Pen FilmEdge = FrozenPen(Frozen("#2B2B2E"), 1);
+    private static readonly Typeface Face = new(new FontFamily(new Uri("pack://application:,,,/Glidecast;component/Fonts/"), "./#Inter, Segoe UI"), FontStyles.Normal, FontWeights.Medium, FontStretches.Normal);
     private static readonly Typeface IconFace = new("Segoe Fluent Icons, Segoe MDL2 Assets");
-    private static readonly Typeface MonoFace = new("Cascadia Mono, Consolas");
 
     private Project? _project;
     private double _playhead;
     private ZoomSegment? _selected, _hover;
+    private Annotation? _note;
     private IReadOnlyList<BitmapSource>? _film;
 
-    private enum DragMode { None, Scrub, Move, ResizeStart, ResizeEnd }
+    private enum DragMode { None, Scrub, Move, ResizeStart, ResizeEnd, MoveNote }
     private DragMode _drag;
     private double _dragOffsetMs;
 
@@ -61,6 +67,10 @@ public sealed class TimelineControl : FrameworkElement
     public event Action? SegmentsChanged;
     /// <summary>Selection changed (null = none).</summary>
     public event Action<ZoomSegment?>? SelectionChanged;
+    /// <summary>The selected annotation changed (null = none).</summary>
+    public event Action<Annotation?>? NoteSelectionChanged;
+    /// <summary>An annotation was moved in time.</summary>
+    public event Action? NotesChanged;
 
     public TimelineControl()
     {
@@ -72,7 +82,7 @@ public sealed class TimelineControl : FrameworkElement
     public Project? Project
     {
         get => _project;
-        set { _project = value; _selected = null; InvalidateVisual(); }
+        set { _project = value; _selected = null; _note = null; InvalidateVisual(); }
     }
 
     public double Playhead
@@ -102,9 +112,56 @@ public sealed class TimelineControl : FrameworkElement
         {
             if (_selected == value) return;
             _selected = value;
+            if (value != null && _note != null)
+            {
+                _note = null;
+                NoteSelectionChanged?.Invoke(null);
+            }
             InvalidateVisual();
             SelectionChanged?.Invoke(value);
         }
+    }
+
+    public Annotation? SelectedNote
+    {
+        get => _note;
+        set
+        {
+            if (_note == value) return;
+            _note = value;
+            if (value != null) Selected = null;
+            InvalidateVisual();
+            NoteSelectionChanged?.Invoke(value);
+        }
+    }
+
+    // Steps / arrows on top, boxes in the middle, captions at the bottom.
+    private static int NoteRow(Annotation a) => a.Kind switch
+    {
+        AnnotationKind.Step or AnnotationKind.Arrow => 0,
+        AnnotationKind.Highlight or AnnotationKind.Spotlight => 1,
+        _ => 2,
+    };
+
+    private Rect NoteRect(Annotation a)
+    {
+        double x0 = X(a.Start), x1 = X(a.End);
+        return new Rect(x0, NoteTop + 3 + NoteRow(a) * 6.5, Math.Max(4, x1 - x0), 5);
+    }
+
+    private Annotation? HitNote(Point p)
+    {
+        if (_project?.Annotations is not { } notes || p.Y < NoteTop || p.Y > NoteTop + NoteH) return null;
+        Annotation? best = null;
+        double bestD = double.MaxValue;
+        foreach (var a in notes)
+        {
+            var r = NoteRect(a);
+            if (p.X < r.Left - 3 || p.X > r.Right + 3) continue;
+            double d = Math.Abs(p.Y - (r.Top + r.Height / 2));
+            if (d < bestD) { bestD = d; best = a; }
+        }
+        return best;
     }
 
     private List<ZoomSegment> Segments => _project?.ZoomSegments ?? new List<ZoomSegment>();
@@ -135,6 +192,7 @@ public sealed class TimelineControl : FrameworkElement
         }
         LaneLabel("", "Video", FilmTop, FilmH);
         LaneLabel("", "Zoom", ZoomTop, ZoomH);
+        LaneLabel("\uE70F", "Notes", NoteTop, NoteH);
         LaneLabel("", "Input", InputTop, InputH);
 
         // Ruler: pick a tick step that keeps labels ~90px apart.
@@ -147,7 +205,7 @@ public sealed class TimelineControl : FrameworkElement
             dc.DrawRectangle(TickBrush, null, new Rect(x, major ? RulerH - 9 : RulerH - 5, 1, major ? 9 : 5));
             if (major)
             {
-                var label = Text(FormatTime(t, step < 1000), 10.5, LabelBrush, MonoFace);
+                var label = Text(FormatTime(t, step < 1000), 10.5, LabelBrush);
                 if (x + 4 + label.Width <= ActualWidth) dc.DrawText(label, new Point(x + 4, 5));
             }
         }
@@ -191,7 +249,7 @@ public sealed class TimelineControl : FrameworkElement
             var brush = sel ? SegSelBrush : s == _hover ? SegHoverBrush : SegBrush;
             dc.DrawRoundedRectangle(brush, sel ? SelPen : null, r, 8, 8);
             // Edge grips.
-            var grip = sel ? Brushes.White : Frozen("#B3FFFFFF");
+            var grip = sel ? Brushes.White : Frozen("#99FFFFFF");
             dc.DrawRoundedRectangle(grip, null, new Rect(r.Left + 4, r.Top + r.Height / 2 - 7, 3, 14), 1.5, 1.5);
             dc.DrawRoundedRectangle(grip, null, new Rect(r.Right - 7, r.Top + r.Height / 2 - 7, 3, 14), 1.5, 1.5);
             if (r.Width > 64)
@@ -210,6 +268,23 @@ public sealed class TimelineControl : FrameworkElement
             dc.DrawText(hint, new Point(Gutter + 14, ZoomTop + (ZoomH - hint.Height) / 2));
         }
 
+        // Notes lane: annotations as thin bars, colored by kind.
+        dc.DrawRoundedRectangle(LaneBrush, null, new Rect(Gutter, NoteTop, Usable, NoteH), 6, 6);
+        if (_project.Annotations is { Count: > 0 } notes)
+        {
+            foreach (var a in notes)
+            {
+                var brush = NoteRow(a) switch { 0 => NoteBrush, 1 => NoteBoxBrush, _ => NoteTextBrush };
+                var r = NoteRect(a);
+                dc.DrawRoundedRectangle(brush, a == _note ? SelPen : null, r, 2.5, 2.5);
+            }
+        }
+        else
+        {
+            var hint = Text("Steps, boxes and captions appear here (Annotate tab)", 10.5, LabelBrush);
+            dc.DrawText(hint, new Point(Gutter + 12, NoteTop + (NoteH - hint.Height) / 2));
+        }
+
         // Input lane: keystrokes as teal ticks, clicks as amber dots.
         dc.DrawRoundedRectangle(LaneBrush, null, new Rect(Gutter, InputTop, Usable, InputH), 6, 6);
         foreach (var k in _project.Keys)
@@ -220,7 +295,7 @@ public sealed class TimelineControl : FrameworkElement
         // Playhead with time bubble.
         double px = X(_playhead);
         dc.DrawRectangle(PlayheadBrush, null, new Rect(px - 1, RulerH - 2, 2, ActualHeight - RulerH));
-        var bubbleText = Text(FormatTime(_playhead), 10.5, Brushes.White, MonoFace);
+        var bubbleText = Text(FormatTime(_playhead), 10.5, Brushes.White);
         double bw = bubbleText.Width + 12;
         double bx = Math.Clamp(px - bw / 2, 0, ActualWidth - bw);
         dc.DrawRoundedRectangle(PlayheadBrush, null, new Rect(bx, 3, bw, 19), 6, 6);
@@ -271,9 +346,20 @@ public sealed class TimelineControl : FrameworkElement
             return;
         }
 
+        if (HitNote(p) is { } note)
+        {
+            SelectedNote = note;
+            _drag = DragMode.MoveNote;
+            _dragOffsetMs = Ms(p.X) - note.Start;
+            CaptureMouse();
+            e.Handled = true;
+            return;
+        }
+
         var hit = HitSegment(p, out var mode);
         if (hit != null)
         {
+            SelectedNote = null;
             Selected = hit;
             _drag = mode;
             _dragOffsetMs = Ms(p.X) - hit.Start;
@@ -281,6 +367,7 @@ public sealed class TimelineControl : FrameworkElement
         else
         {
             if (InZoomLane(p)) Selected = null;
+            if (p.Y >= NoteTop && p.Y <= NoteTop + NoteH) SelectedNote = null;
             _drag = DragMode.Scrub;
             Playhead = Ms(p.X);
             SeekRequested?.Invoke(_playhead);
@@ -297,7 +384,7 @@ public sealed class TimelineControl : FrameworkElement
             var h = HitSegment(p, out var mode);
             if (h != _hover) { _hover = h; InvalidateVisual(); }
             Cursor = mode is DragMode.ResizeStart or DragMode.ResizeEnd ? Cursors.SizeWE
-                : mode == DragMode.Move ? Cursors.Hand : p.Y < FilmTop + FilmH ? Cursors.IBeam : Cursors.Arrow;
+                : mode == DragMode.Move || HitNote(p) != null ? Cursors.Hand : p.Y < FilmTop + FilmH ? Cursors.IBeam : Cursors.Arrow;
             return;
         }
 
@@ -309,6 +396,16 @@ public sealed class TimelineControl : FrameworkElement
                 Playhead = t;
                 SeekRequested?.Invoke(t);
                 return;
+            case DragMode.MoveNote when _note != null:
+            {
+                double len = _note.End - _note.Start;
+                double start = Math.Clamp(t - _dragOffsetMs, 0, Math.Max(0, Duration - len));
+                _note.Start = start;
+                _note.End = start + len;
+                InvalidateVisual();
+                NotesChanged?.Invoke();
+                return;
+            }
             case DragMode.Move when s != null:
             {
                 double len = s.End - s.Start;
@@ -351,6 +448,11 @@ public sealed class TimelineControl : FrameworkElement
             DeleteSelected();
             e.Handled = true;
         }
+        else if (e.Key is Key.Delete or Key.Back && _note != null)
+        {
+            DeleteSelectedNote();
+            e.Handled = true;
+        }
     }
 
     /// <summary>Adds a 2 s zoom at <paramref name="tMs"/>, focused on where the
@@ -372,6 +474,15 @@ public sealed class TimelineControl : FrameworkElement
         return seg;
     }
 
+    public void DeleteSelectedNote()
+    {
+        if (_note == null || _project?.Annotations == null) return;
+        _project.Annotations.Remove(_note);
+        SelectedNote = null;
+        InvalidateVisual();
+        NotesChanged?.Invoke();
+    }
+
     public void DeleteSelected()
     {
         if (_selected == null || _project?.ZoomSegments == null) return;
@@ -386,13 +497,6 @@ public sealed class TimelineControl : FrameworkElement
         var b = (SolidColorBrush)new BrushConverter().ConvertFromString(hex)!;
         b.Freeze();
         return b;
-    }
-
-    private static Brush Gradient(string a, string b, double opacity)
-    {
-        var g = new LinearGradientBrush((Color)ColorConverter.ConvertFromString(a), (Color)ColorConverter.ConvertFromString(b), 0) { Opacity = opacity };
-        g.Freeze();
-        return g;
     }
 
     private static Pen FrozenPen(Brush b, double w)

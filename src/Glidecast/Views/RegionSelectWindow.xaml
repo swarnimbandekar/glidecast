@@ -3,32 +3,32 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         Topmost="True" ShowInTaskbar="False" ResizeMode="NoResize" Cursor="Cross"
-        FontFamily="Segoe UI" Title="Select region">
+        FontFamily="{StaticResource UiFont}" Foreground="{StaticResource Text}" Title="Select region">
     <Grid x:Name="Root" Background="#01000000"
           MouseLeftButtonDown="Root_Down" MouseMove="Root_Move" MouseLeftButtonUp="Root_Up">
         <Path x:Name="Dim" Fill="#99000000" IsHitTestVisible="False" />
         <Canvas IsHitTestVisible="False">
             <Rectangle x:Name="SelBorder" Stroke="{StaticResource Accent}" StrokeThickness="2" Visibility="Collapsed" />
-            <Border x:Name="SizeTag" Background="{StaticResource Accent}" CornerRadius="5" Padding="7,3" Visibility="Collapsed">
-                <TextBlock x:Name="SizeText" Foreground="White" FontSize="12" FontWeight="SemiBold" />
+            <Border x:Name="SizeTag" Background="{StaticResource Accent}" CornerRadius="4" Padding="6,2" Visibility="Collapsed">
+                <TextBlock x:Name="SizeText" Foreground="White" FontSize="12" FontWeight="Medium" Typography.NumeralAlignment="Tabular" />
             </Border>
         </Canvas>
         <Canvas>
-            <Border x:Name="Confirm" Background="{StaticResource Panel}" CornerRadius="10" Padding="6" Visibility="Collapsed" Cursor="Arrow">
+            <Border x:Name="Confirm" Background="{StaticResource Panel2}" BorderBrush="{StaticResource BorderStrong}" BorderThickness="1" CornerRadius="10" Padding="6" Visibility="Collapsed" Cursor="Arrow" Effect="{StaticResource SoftShadow}">
                 <StackPanel Orientation="Horizontal">
                     <Button Content="Cancel" Margin="0,0,6,0" Click="Cancel_Click" />
-                    <Button Style="{StaticResource PrimaryButton}" Click="Ok_Click" AutomationProperties.Name="Record this area">
+                    <Button Style="{StaticResource RecordButton}" Click="Ok_Click" AutomationProperties.Name="Record this area">
                         <StackPanel Orientation="Horizontal">
-                            <Ellipse Width="10" Height="10" Fill="White" Margin="0,0,8,0" />
+                            <Ellipse Width="8" Height="8" Fill="White" Margin="0,0,8,0" VerticalAlignment="Center" />
                             <TextBlock Text="Record this area" Foreground="White" />
                         </StackPanel>
                     </Button>
                 </StackPanel>
             </Border>
         </Canvas>
-        <Border x:Name="Help" Background="{StaticResource Panel}" CornerRadius="10" Padding="16,10"
+        <Border x:Name="Help" Background="{StaticResource Panel2}" BorderBrush="{StaticResource BorderStrong}" BorderThickness="1" CornerRadius="8" Padding="14,8"
                 HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,40,0,0" IsHitTestVisible="False">
-            <TextBlock Text="Drag to select the area to record · Enter to confirm · Esc to cancel" />
+            <TextBlock FontSize="12.5"><Run Text="Drag to select the area to record" /><Run Text="   Enter to confirm · Esc to cancel" Foreground="{StaticResource Subtext}" /></TextBlock>
         </Border>
     </Grid>
 </Window>

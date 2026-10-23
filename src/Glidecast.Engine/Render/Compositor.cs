@@ -6,14 +6,16 @@ namespace Glidecast.Render;
 
 public enum BackgroundKind { Gradient, Solid, Image }
 
+public enum LogoCorner { TopLeft, TopRight, BottomLeft, BottomRight }
+
 /// <summary>Look of the composite. Lengths are in source-screen pixels, so the
 /// same style renders identically at preview and export resolutions. Colors are
 /// "#RRGGBB" strings so the settings round-trip through project.json.</summary>
 public sealed class StyleSettings
 {
     public BackgroundKind Background { get; set; } = BackgroundKind.Gradient;
-    public string BgTop { get; set; } = "#6D5BD0";      // gradient start
-    public string BgBottom { get; set; } = "#1C1640";   // gradient end
+    public string BgTop { get; set; } = "#2F5FD0";      // gradient start ("Cobalt")
+    public string BgBottom { get; set; } = "#0B1226";   // gradient end
     public string BgSolid { get; set; } = "#1F2430";
     public string? BgImage { get; set; }                 // wallpaper path
     public float BgBlur { get; set; }                    // wallpaper blur (source px)
@@ -21,7 +23,7 @@ public sealed class StyleSettings
     public float PaddingFraction { get; set; } = 0.07f;  // border around the screen card
     public float CornerRadius { get; set; } = 18f;        // card rounding
     public float ShadowBlur { get; set; } = 40f;
-    public string Accent { get; set; } = "#7C5CFF";       // click effect / dot cursor tint
+    public string Accent { get; set; } = "#3D7EFF";       // click effect / dot cursor tint
 
     public CursorStyle CursorStyle { get; set; } = CursorStyle.Classic;
     public float CursorScale { get; set; } = 1.6f;
@@ -33,6 +35,18 @@ public sealed class StyleSettings
     public bool DrawCursor { get; set; } = true;
     public bool DrawClicks { get; set; } = true;
     public bool DrawKeystrokes { get; set; } = true;
+    public bool DrawAnnotations { get; set; } = true;
+    /// <summary>A short fading streak behind the moving cursor.</summary>
+    public bool CursorTrail { get; set; }
+
+    /// <summary>Shape of the canvas (reframes 16:9 / 9:16 / 1:1).</summary>
+    public CanvasAspect Aspect { get; set; } = CanvasAspect.Source;
+
+    /// <summary>Brand logo drawn in a corner of every frame.</summary>
+    public string? LogoImage { get; set; }
+    public LogoCorner LogoCorner { get; set; } = LogoCorner.BottomRight;
+    public float LogoSize { get; set; } = 0.1f;          // fraction of output width
+    public float LogoOpacity { get; set; } = 0.85f;
 
     public StyleSettings Clone() => (StyleSettings)MemberwiseClone();
 
@@ -61,9 +75,13 @@ public sealed class Compositor : IDisposable
 
     private readonly SKSurface _surface;
     private readonly SKBitmap _srcBitmap;
-    // Output pixels per source pixel when the whole screen is shown unzoomed
-    // at full size; scales every style length.
-    private readonly float _unit;
+    // Output pixels per source pixel when the canvas's view is shown unzoomed
+    // at full size; scales every style length. Follows the camera's view.
+    private float _unit;
+    private SKImage? _bgImage;
+    private string? _bgKey;
+    private (string? path, int w) _logoKey;
+    private SKBitmap? _logo;
 
     private CursorTrack? _cursor;
     private (string? path, float blur) _wallKey;
@@ -82,7 +100,7 @@ public sealed class Compositor : IDisposable
         OutH = outH > 0 ? outH : p.Height;
         SrcW = srcW > 0 ? srcW : p.Width;
         SrcH = srcH > 0 ? srcH : p.Height;
-        _unit = Math.Min(OutW / (float)p.Width, OutH / (float)p.Height);
+        _unit = Unit(camera, OutW, OutH);
         _surface = SKSurface.Create(new SKImageInfo(OutW, OutH, SKColorType.Bgra8888, SKAlphaType.Premul));
         _srcBitmap = new SKBitmap(new SKImageInfo(SrcW, SrcH, SKColorType.Bgra8888, SKAlphaType.Premul));
     }
@@ -93,7 +111,7 @@ public sealed class Compositor : IDisposable
     /// to map a click on a preview back to source pixels via its inverse.</summary>
     public static SKMatrix CameraFor(Project p, CameraTrack cam, StyleSettings style, int outW, int outH, double tMs)
     {
-        float unit = Math.Min(outW / (float)p.Width, outH / (float)p.Height);
+        float unit = Unit(cam, outW, outH);
         var (scale, cx, cy) = cam.At(tMs);
         float cardScale = 1f - 2f * style.PaddingFraction;
         float k = (float)(cardScale * scale) * unit;
@@ -102,6 +120,9 @@ public sealed class Compositor : IDisposable
         m = m.PreConcat(SKMatrix.CreateTranslation(-(float)cx, -(float)cy));
         return m;
     }
+
+    private static float Unit(CameraTrack cam, int outW, int outH) =>
+        (float)Math.Min(outW / cam.ViewW, outH / cam.ViewH);
 
     private CursorTrack CursorFor(StyleSettings st)
     {
@@ -119,36 +140,62 @@ public sealed class Compositor : IDisposable
         var st = Style;
         var canvas = _surface.Canvas;
 
-        // 1) Background.
-        DrawBackground(canvas, st);
-
+        _unit = Unit(Camera, OutW, OutH);
         var m = CameraMatrix(tMs);
-        var dstRect = m.MapRect(new SKRect(0, 0, _p.Width, _p.Height));
+        // The card is the canvas's view window (the whole screen unless reframed).
+        var full = new SKRect(0, 0, _p.Width, _p.Height);
+        var (_, vcx, vcy) = Camera.At(tMs);
+        var window = new SKRect((float)(vcx - Camera.ViewW / 2), (float)(vcy - Camera.ViewH / 2),
+            (float)(vcx + Camera.ViewW / 2), (float)(vcy + Camera.ViewH / 2));
+        if (!window.IntersectsWith(full)) window = full;
+        else window.Intersect(full);
+        var dstRect = m.MapRect(window);
+        var screenRect = m.MapRect(full);
         float radius = st.CornerRadius * _unit;
         var round = new SKRoundRect(dstRect, radius, radius);
 
+        // Zoomed in far enough that the card (corners included) fills the frame:
+        // background and shadow are invisible, so skip them.
+        var inner = dstRect;
+        inner.Inflate(-radius, -radius);
+        bool covered = inner.Left <= 0 && inner.Top <= 0 && inner.Right >= OutW && inner.Bottom >= OutH;
+
+        // 1) Background.
+        if (!covered) canvas.DrawImage(Background(st), 0, 0);
+        else canvas.Clear(SKColors.Black);
+
         // 2) Layered shadow: a wide soft one plus a tight contact shadow.
-        if (st.ShadowBlur > 0)
+        if (st.ShadowBlur > 0 && !covered)
         {
+            // Mask-filter blurs of a round rect take Skia's analytic fast path;
+            // an image-filter blur would blur a whole (possibly huge) layer.
             float blur = st.ShadowBlur * _unit;
             using (var wide = new SKPaint { Color = new SKColor(0, 0, 0, 120), IsAntialias = true })
             {
-                wide.ImageFilter = SKImageFilter.CreateBlur(blur, blur);
+                wide.MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, blur);
                 canvas.Save();
                 canvas.Translate(0, blur * 0.35f);
                 canvas.DrawRoundRect(round, wide);
                 canvas.Restore();
             }
             using var tight = new SKPaint { Color = new SKColor(0, 0, 0, 90), IsAntialias = true };
-            tight.ImageFilter = SKImageFilter.CreateBlur(blur * 0.15f + 1, blur * 0.15f + 1);
+            tight.MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, blur * 0.15f + 1);
             canvas.DrawRoundRect(round, tight);
         }
 
         // 3) The screen, clipped to the card; softened slightly while the camera moves fast.
-        canvas.Save();
-        canvas.ClipRoundRect(round, SKClipOperation.Intersect, antialias: true);
+        // Bicubic only where it shows: magnified text. Near 1:1 or shrinking a
+        // little, bilinear is indistinguishable and many times cheaper (High
+        // would also rebuild mipmaps of every frame).
+        float mag = screenRect.Width / SrcW;
+        var quality = mag > 1.08f ? SKFilterQuality.High : mag > 0.6f ? SKFilterQuality.Low : SKFilterQuality.Medium;
+        // Fill the round rect with the screen as a shader: one anti-aliased
+        // shape, no clip mask over the whole frame.
+        var local = SKMatrix.CreateScale(screenRect.Width / SrcW, screenRect.Height / SrcH)
+            .PostConcat(SKMatrix.CreateTranslation(screenRect.Left, screenRect.Top));
         using (var img = SKImage.FromPixels(_srcBitmap.Info, _srcBitmap.GetPixels()))
-        using (var paint = new SKPaint { FilterQuality = SKFilterQuality.High, IsAntialias = true })
+        using (var shader = img.ToShader(SKShaderTileMode.Clamp, SKShaderTileMode.Clamp, local))
+        using (var paint = new SKPaint { FilterQuality = quality, IsAntialias = true, Shader = shader })
         {
             if (st.MotionBlur)
             {
@@ -156,21 +203,43 @@ public sealed class Compositor : IDisposable
                 float sigma = (float)Math.Clamp((Camera.MotionAt(tMs) - 2.0) * 0.5, 0, 1.1) * Math.Max(0.6f, _unit);
                 if (sigma > 0.3f) paint.ImageFilter = SKImageFilter.CreateBlur(sigma, sigma);
             }
-            canvas.DrawImage(img, dstRect, paint);
+            if (covered) canvas.DrawRect(new SKRect(0, 0, OutW, OutH), paint);
+            else canvas.DrawRoundRect(round, paint);
         }
-        canvas.Restore();
 
         // Hairline edge gives the card a crisp, glassy finish.
         using (var edge = new SKPaint { Color = new SKColor(255, 255, 255, 28), IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = Math.Max(1f, _unit) })
             canvas.DrawRoundRect(round, edge);
 
-        // 4) Overlays in output space.
+        // 4) Overlays in output space. Annotations stay on the card.
+        if (st.DrawAnnotations && _p.Annotations is { Count: > 0 })
+        {
+            canvas.Save();
+            canvas.ClipRoundRect(round, SKClipOperation.Intersect, antialias: true);
+            AnnotationPainter.Draw(canvas, _p.Annotations, tMs, m, _unit * (float)Math.Sqrt(Camera.At(tMs).scale),
+                StyleSettings.ParseColor(st.Accent, new SKColor(0x3D, 0x7E, 0xFF)), round.Rect);
+            canvas.Restore();
+        }
         DrawOverlays(canvas, st, m, tMs);
+        DrawLogo(canvas, st);
 
         canvas.Flush();
         using var snap = _surface.Snapshot();
         using var pm = snap.PeekPixels();
         System.Runtime.InteropServices.Marshal.Copy(pm.GetPixels(), dst, 0, Math.Min(dst.Length, OutW * OutH * 4));
+    }
+
+    /// <summary>The background never moves, so it's drawn once per style and reused.</summary>
+    private SKImage Background(StyleSettings st)
+    {
+        string key = $"{st.Background}|{st.BgTop}|{st.BgBottom}|{st.BgSolid}|{st.BgImage}|{st.BgBlur}";
+        if (_bgImage != null && key == _bgKey) return _bgImage;
+        _bgImage?.Dispose();
+        using var surf = SKSurface.Create(new SKImageInfo(OutW, OutH, SKColorType.Bgra8888, SKAlphaType.Premul));
+        DrawBackground(surf.Canvas, st);
+        _bgImage = surf.Snapshot();
+        _bgKey = key;
+        return _bgImage;
     }
 
     private void DrawBackground(SKCanvas canvas, StyleSettings st)
@@ -238,7 +307,7 @@ public sealed class Compositor : IDisposable
 
     private void DrawOverlays(SKCanvas canvas, StyleSettings st, SKMatrix m, double tMs)
     {
-        var accent = StyleSettings.ParseColor(st.Accent, new SKColor(0x7C, 0x5C, 0xFF));
+        var accent = StyleSettings.ParseColor(st.Accent, new SKColor(0x3D, 0x7E, 0xFF));
         var (zoom, _, _) = Camera.At(tMs);
         float zoomBoost = (float)Math.Sqrt(zoom); // overlays grow a little with the zoom
 
@@ -274,11 +343,66 @@ public sealed class Compositor : IDisposable
                 double still = track.StillFor(tMs);
                 opacity = (float)Math.Clamp(1 - (still - 2500) / 400, 0, 1);
             }
+            if (st.CursorTrail && opacity > 0)
+                DrawTrail(canvas, track, m, tMs, st.CursorScale * _unit * zoomBoost, accent, opacity);
             CursorPainter.Draw(canvas, st.CursorStyle, pt, st.CursorScale * _unit * zoomBoost, press, accent, opacity);
         }
 
         if (st.DrawKeystrokes)
             DrawKeystrokes(canvas, st, tMs);
+    }
+
+    /// <summary>A tapering streak along the last ~170 ms of cursor path; invisible when still.</summary>
+    private static void DrawTrail(SKCanvas canvas, CursorTrack track, SKMatrix m, double tMs, float size, SKColor accent, float opacity)
+    {
+        const int N = 12;
+        const double Step = 14;
+        var prev = m.MapPoint(Pt(track.At(tMs)));
+        using var paint = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeCap = SKStrokeCap.Round };
+        for (int i = 1; i <= N; i++)
+        {
+            var pt = m.MapPoint(Pt(track.At(tMs - i * Step)));
+            if (SKPoint.Distance(prev, pt) > 0.75f)
+            {
+                float f = 1 - (i - 1) / (float)N;
+                paint.StrokeWidth = Math.Max(1f, 5.5f * size * f);
+                paint.Color = accent.WithAlpha((byte)(150 * f * f * opacity));
+                canvas.DrawLine(prev, pt, paint);
+            }
+            prev = pt;
+        }
+
+        static SKPoint Pt((double x, double y) p) => new((float)p.x, (float)p.y);
+    }
+
+    private void DrawLogo(SKCanvas canvas, StyleSettings st)
+    {
+        if (string.IsNullOrEmpty(st.LogoImage) || st.LogoOpacity <= 0) return;
+        int w = Math.Max(8, (int)(OutW * Math.Clamp(st.LogoSize, 0.02f, 0.5f)));
+        if (_logoKey != (st.LogoImage, w))
+        {
+            _logo?.Dispose();
+            _logo = null;
+            _logoKey = (st.LogoImage, w);
+            try
+            {
+                if (File.Exists(st.LogoImage) && SKBitmap.Decode(st.LogoImage) is { } raw)
+                {
+                    using (raw)
+                    {
+                        int h = Math.Max(1, (int)Math.Round(raw.Height * (w / (double)raw.Width)));
+                        _logo = raw.Resize(new SKImageInfo(w, h, SKColorType.Bgra8888, SKAlphaType.Premul), SKFilterQuality.High);
+                    }
+                }
+            }
+            catch { _logo = null; }
+        }
+        if (_logo == null) return;
+        float margin = Math.Min(OutW, OutH) * 0.035f;
+        float x = st.LogoCorner is LogoCorner.TopLeft or LogoCorner.BottomLeft ? margin : OutW - margin - _logo.Width;
+        float y = st.LogoCorner is LogoCorner.TopLeft or LogoCorner.TopRight ? margin : OutH - margin - _logo.Height;
+        using var paint = new SKPaint { Color = SKColors.White.WithAlpha((byte)(255 * Math.Clamp(st.LogoOpacity, 0, 1))), FilterQuality = SKFilterQuality.High };
+        canvas.DrawBitmap(_logo, x, y, paint);
     }
 
     private static readonly HashSet<string> Modifiers = new(StringComparer.OrdinalIgnoreCase)
@@ -345,5 +469,7 @@ public sealed class Compositor : IDisposable
         _surface.Dispose();
         _srcBitmap.Dispose();
         _wallpaper?.Dispose();
+        _logo?.Dispose();
+        _bgImage?.Dispose();
     }
 }
