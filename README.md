@@ -109,8 +109,17 @@ blocks that folder, Glidecast uses `%LOCALAPPDATA%\Glidecast\Recordings`
 instead. Each project is a folder containing `source.mp4` and a readable
 `project.json`.
 
+The launcher, and the get-ready bar that appears once you have picked what to
+record (the area is outlined on screen and your camera floats where it will
+appear in the video):
+
 <p align="center">
-  <img src="docs/media/home.png" alt="Home screen" width="49%" />
+  <img src="docs/media/home.png" alt="The launcher: full screen, custom area or window, plus camera, microphone and system sound" width="88%" />
+</p>
+<p align="center">
+  <img src="docs/media/prepare.png" alt="The get-ready bar: inputs, countdown, frame rate and Start" width="100%" />
+</p>
+<p align="center">
   <img src="docs/media/cursor.png" alt="Cursor settings" width="49%" />
 </p>
 

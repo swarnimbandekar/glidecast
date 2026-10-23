@@ -66,15 +66,57 @@ public static class UpdateService
     public static async Task<Release?> CheckAsync(CancellationToken ct = default)
     {
         if (Environment.GetEnvironmentVariable("GLIDECAST_NO_UPDATE_CHECK") == "1") return null;
-        string url = Environment.GetEnvironmentVariable("GLIDECAST_UPDATE_URL") is { Length: > 0 } u
-            ? u : $"https://api.github.com/repos/{Repo}/releases/latest";
-        string json = url.StartsWith("http", StringComparison.OrdinalIgnoreCase)
-            ? await Http.GetStringAsync(url, ct)
-            : await File.ReadAllTextAsync(url, ct);
-        var r = Parse(json);
+        string? custom = Environment.GetEnvironmentVariable("GLIDECAST_UPDATE_URL");
+        Release? r;
+        if (custom is { Length: > 0 })
+        {
+            r = Parse(custom.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+                ? await Http.GetStringAsync(custom, ct) : await File.ReadAllTextAsync(custom, ct));
+        }
+        else
+        {
+            try
+            {
+                r = Parse(await Http.GetStringAsync($"https://api.github.com/repos/{Repo}/releases/latest", ct));
+            }
+            catch (HttpRequestException)
+            {
+                // GitHub's API allows only 60 anonymous requests an hour per
+                // address (shared offices and VPNs use it up) and answers 403.
+                // The web pages have no such limit, so read the release from those.
+                r = await LatestFromWebAsync(ct);
+            }
+        }
         if (r == null || r.Version <= Current) return null;
         if (string.Equals(SkippedVersion, r.Version.ToString(3), StringComparison.Ordinal)) return null;
         return r;
+    }
+
+    // Never follows redirects: the redirect target is the answer.
+    private static readonly HttpClient WebHttp = CreateWebClient();
+
+    private static HttpClient CreateWebClient()
+    {
+        var h = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(30) };
+        h.DefaultRequestHeaders.UserAgent.ParseAdd($"Glidecast/{Current.ToString(3)}");
+        return h;
+    }
+
+    /// <summary>The latest release without the API: github.com/OWNER/REPO/releases/latest
+    /// redirects to the newest tag, and our assets have predictable names.</summary>
+    private static async Task<Release?> LatestFromWebAsync(CancellationToken ct)
+    {
+        using var resp = await WebHttp.GetAsync($"https://github.com/{Repo}/releases/latest", ct);
+        string? loc = resp.Headers.Location?.ToString();
+        if (loc == null || !loc.Contains("/releases/tag/")) return null;
+        string tag = Uri.UnescapeDataString(loc[(loc.LastIndexOf('/') + 1)..]);
+        if (!Version.TryParse(tag.TrimStart('v', 'V'), out var v)) return null;
+        v = new Version(v.Major, v.Minor, Math.Max(0, v.Build));
+        string ver = v.ToString(3), dl = $"https://github.com/{Repo}/releases/download/{tag}/";
+        return new Release(v, tag, "", $"https://github.com/{Repo}/releases/tag/{tag}",
+            dl + $"Glidecast-Setup-{ver}-x64.exe", $"Glidecast-Setup-{ver}-x64.exe",
+            dl + $"Glidecast-{ver}-win-x64-portable.zip", $"Glidecast-{ver}-win-x64-portable.zip",
+            dl + "SHA256SUMS.txt");
     }
 
     private static Release? Parse(string json)
