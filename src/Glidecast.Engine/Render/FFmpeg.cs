@@ -14,28 +14,28 @@ public static class FFmpeg
             if (_cached != null) return _cached;
             // 1) Explicit override.
             var env = Environment.GetEnvironmentVariable("GLIDECAST_FFMPEG");
-            if (!string.IsNullOrEmpty(env) && File.Exists(env)) return _cached = env;
+            if (!string.IsNullOrEmpty(env) && File.Exists(env)) return _cached = Real(env);
 
-            // 2) On PATH.
+            // 2) The copy bundled next to the app: it is the build we tested with.
+            string bundled = System.IO.Path.Combine(AppContext.BaseDirectory, "ffmpeg.exe");
+            if (File.Exists(bundled)) return _cached = bundled;
+
+            // 3) On PATH.
             foreach (var dir in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(';'))
             {
                 if (string.IsNullOrWhiteSpace(dir)) continue;
                 try
                 {
                     var cand = System.IO.Path.Combine(dir.Trim(), "ffmpeg.exe");
-                    if (File.Exists(cand)) return _cached = cand;
+                    if (File.Exists(cand)) return _cached = Real(cand);
                 }
                 catch { /* malformed PATH entry */ }
             }
 
-            // 3) Next to the app, then winget's install locations (PATH may be
-            //    stale right after `winget install` until the user signs out).
+            // 4) winget's install locations (PATH may be stale right after
+            //    `winget install` until the user signs out).
             string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            var guesses = new List<string>
-            {
-                System.IO.Path.Combine(AppContext.BaseDirectory, "ffmpeg.exe"),
-                System.IO.Path.Combine(local, @"Microsoft\WinGet\Links\ffmpeg.exe"),
-            };
+            var guesses = new List<string>();
             try
             {
                 string pkgs = System.IO.Path.Combine(local, @"Microsoft\WinGet\Packages");
@@ -44,13 +44,28 @@ public static class FFmpeg
                         guesses.AddRange(Directory.EnumerateFiles(dir, "ffmpeg.exe", SearchOption.AllDirectories));
             }
             catch { /* best effort */ }
+            guesses.Add(System.IO.Path.Combine(local, @"Microsoft\WinGet\Links\ffmpeg.exe"));
             foreach (var g in guesses)
-                if (File.Exists(g)) return _cached = g;
+                if (File.Exists(g)) return _cached = Real(g);
 
             throw new FileNotFoundException(
                 "ffmpeg.exe not found. Install it (winget install Gyan.FFmpeg.Essentials), put it on PATH, " +
                 "or set GLIDECAST_FFMPEG to its full path.");
         }
+    }
+
+    /// <summary>The real file behind a symbolic link. winget puts ffmpeg on PATH as a
+    /// link, and Windows can refuse to start a process through one ("untrusted mount
+    /// point"), so launch the target instead.</summary>
+    private static string Real(string path)
+    {
+        try
+        {
+            var target = new FileInfo(path).ResolveLinkTarget(returnFinalTarget: true);
+            if (target is { Exists: true }) return target.FullName;
+        }
+        catch { /* not a link, or unreadable: use it as it is */ }
+        return path;
     }
 
     /// <summary>True if an ffmpeg executable can be located.</summary>
