@@ -1,7 +1,7 @@
 <Project>
   <!-- Shared metadata for every Glidecast project. Bump Version for releases. -->
   <PropertyGroup>
-    <Version>1.2.1</Version>
+    <Version>1.2.2</Version>
     <Product>Glidecast</Product>
     <Company>Glidecast</Company>
     <Authors>Swarnim Bandekar and contributors</Authors>

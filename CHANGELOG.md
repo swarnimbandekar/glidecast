@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.2 — 2026-10-24
+
+- **Fixed "Could not start recording … untrusted mount point".** On some PCs
+  Windows refuses to start ffmpeg through winget's `WinGet\Linksfmpeg.exe`
+  symbolic link. Glidecast now uses the ffmpeg.exe bundled next to the app
+  first, and starts the real file behind a symbolic link when it has to use
+  another ffmpeg.
+
 ## 1.2.1 — 2026-10-24
 
 - **Update check no longer fails silently.** GitHub's API allows only 60
