@@ -1,7 +1,12 @@
 # Changelog
 
-## Unreleased
+## 1.1.0 — 2026-10-23
 
+- **In-app updates**: Glidecast checks GitHub for a new release when it starts
+  and offers *Update now* or *Skip this version*. Updating downloads the
+  installer (or the portable zip), verifies it against the release's
+  SHA256SUMS.txt, installs it and reopens the app. Set
+  `GLIDECAST_NO_UPDATE_CHECK=1` to turn the check off.
 - **New look**: the whole UI was redesigned around neutral graphite surfaces
   and a single blue accent (no gradients or glows), with Inter as the bundled
   typeface. Calmer home screen, an icon rail for the editor inspector, and a

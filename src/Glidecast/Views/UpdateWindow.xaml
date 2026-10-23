@@ -1,0 +1,55 @@
+<Window x:Class="Glidecast.App.Views.UpdateWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Update available" Width="480" SizeToContent="Height" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Background="{StaticResource Panel}" Foreground="{StaticResource Text}"
+        FontFamily="{StaticResource UiFont}" FontSize="13" UseLayoutRounding="True">
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="64" ResizeBorderThickness="0" GlassFrameThickness="0,0,0,1" UseAeroCaptionButtons="False" />
+    </WindowChrome.WindowChrome>
+    <Border BorderBrush="{StaticResource Border}" BorderThickness="1">
+        <StackPanel>
+            <DockPanel Height="64" Margin="24,0,12,0">
+                <Button x:Name="CloseButton" DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE8BB;" FontSize="11" Click="Later_Click"
+                        WindowChrome.IsHitTestVisibleInChrome="True" ToolTip="Remind me next time" />
+                <Image Source="/Glidecast;component/Assets/logo-64.png" Width="32" Height="32" VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality" />
+                <StackPanel VerticalAlignment="Center" Margin="12,0,0,0">
+                    <TextBlock x:Name="Heading" Style="{StaticResource Title}" FontSize="14" />
+                    <TextBlock x:Name="Subheading" Style="{StaticResource Hint}" Foreground="{StaticResource Muted}" Margin="0,1,0,0" />
+                </StackPanel>
+            </DockPanel>
+            <Rectangle Style="{StaticResource Divider}" />
+
+            <StackPanel Margin="24,4,24,0">
+                <TextBlock Text="What's new" Style="{StaticResource SectionLabel}" Margin="0,16,0,8" />
+                <Border Background="{StaticResource Bg}" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="8">
+                    <ScrollViewer x:Name="NotesScroll" MaxHeight="240" VerticalScrollBarVisibility="Auto" Padding="14,12">
+                        <TextBlock x:Name="Notes" TextWrapping="Wrap" FontSize="12.5" LineHeight="19" Foreground="{StaticResource Subtext}" />
+                    </ScrollViewer>
+                </Border>
+
+                <StackPanel x:Name="ProgressPanel" Visibility="Collapsed" Margin="0,16,0,0">
+                    <DockPanel>
+                        <TextBlock x:Name="ProgressPct" DockPanel.Dock="Right" Foreground="{StaticResource Subtext}" Typography.NumeralAlignment="Tabular" />
+                        <TextBlock x:Name="ProgressText" Text="Downloading…" FontWeight="Medium" />
+                    </DockPanel>
+                    <ProgressBar x:Name="Progress" Minimum="0" Maximum="1" Margin="0,8,0,0" />
+                </StackPanel>
+                <TextBlock x:Name="ErrorText" Visibility="Collapsed" Margin="0,14,0,0" Style="{StaticResource Hint}" Foreground="#FF9592" />
+            </StackPanel>
+
+            <Rectangle Style="{StaticResource Divider}" Margin="0,24,0,0" />
+            <DockPanel Margin="24,16,24,16" LastChildFill="False">
+                <Button x:Name="SkipButton" DockPanel.Dock="Left" Style="{StaticResource GhostButton}" Content="Skip this version" Padding="10,0" Click="Skip_Click"
+                        ToolTip="Don't offer this version again" />
+                <Button x:Name="UpdateButton" DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}" Padding="18,0" Click="Update_Click" IsDefault="True">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Style="{StaticResource Icon}" Text="&#xE896;" FontSize="12" Margin="0,0,8,0" Foreground="White" />
+                        <TextBlock x:Name="UpdateLabel" Text="Update now" Foreground="White" />
+                    </StackPanel>
+                </Button>
+            </DockPanel>
+        </StackPanel>
+    </Border>
+</Window>

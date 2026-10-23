@@ -27,6 +27,21 @@ public partial class MainWindow : Window
             ShowEditor(file);
         else
             ShowHome();
+        Loaded += async (_, _) => await OfferUpdateAsync();
+    }
+
+    /// <summary>Shortly after launch, offers a newer release if there is one.
+    /// Offline or rate-limited checks fail silently.</summary>
+    private async Task OfferUpdateAsync()
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(2));
+            if (await UpdateService.CheckAsync() is not { } release) return;
+            if (!IsVisible || OwnedWindows.Count > 0) return; // recording, or another dialog is up
+            new UpdateWindow(release) { Owner = this }.ShowDialog();
+        }
+        catch { /* no network, GitHub unavailable, ... */ }
     }
 
     public static string? ResolveProjectFile(string path)

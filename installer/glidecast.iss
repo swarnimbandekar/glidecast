@@ -70,10 +70,17 @@ Filename: "{localappdata}\Microsoft\WindowsApps\winget.exe"; \
   StatusMsg: "Installing FFmpeg (this can take a minute)..."; Tasks: ffmpeg; Flags: runhidden waituntilterminated skipifdoesntexist
 #endif
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
+; In-app updates run this installer with /SILENT /RELAUNCH=1: reopen Glidecast afterwards.
+Filename: "{app}\{#AppExe}"; Flags: nowait runasoriginaluser; Check: RelaunchAfterUpdate
 
 [Code]
 function FFmpegInstalled: Boolean;
 begin
   Result := (FileSearch('ffmpeg.exe', GetEnv('PATH')) <> '') or
             FileExists(ExpandConstant('{localappdata}\Microsoft\WinGet\Links\ffmpeg.exe'));
+end;
+
+function RelaunchAfterUpdate: Boolean;
+begin
+  Result := WizardSilent and (ExpandConstant('{param:RELAUNCH|0}') = '1');
 end;

@@ -85,3 +85,9 @@ if (-not $SkipInstaller) {
     if ($LASTEXITCODE -ne 0) { throw "installer build failed" }
     Write-Host "Installer: $(Join-Path $artifacts "Glidecast-Setup-$Version-x64.exe")" -ForegroundColor Green
 }
+
+# Checksums: the in-app updater refuses downloads that don't match these.
+$sums = Get-ChildItem $artifacts -File | Where-Object { $_.Extension -in ".exe", ".zip" } | Sort-Object Name |
+    ForEach-Object { "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name }
+Set-Content -Path (Join-Path $artifacts "SHA256SUMS.txt") -Value $sums -Encoding ascii
+Write-Host "Checksums: $(Join-Path $artifacts "SHA256SUMS.txt")" -ForegroundColor Green
