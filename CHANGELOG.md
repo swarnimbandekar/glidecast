@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.1 — 2026-10-24
+
+- **Update check no longer fails silently.** GitHub's API allows only 60
+  anonymous requests an hour per address and answers 403 beyond that (shared
+  networks and VPNs hit it), so Glidecast could miss a new release without
+  saying anything. It now falls back to github.com's release pages, which have
+  no such limit.
+- New launcher, get-ready bar and editor screenshots in the README.
+
 ## 1.2.0 — 2026-10-23
 
 - **New launcher**: the home screen is now a compact window. Pick *Full screen*,
