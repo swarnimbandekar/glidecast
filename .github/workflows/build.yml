@@ -17,7 +17,8 @@ jobs:
         run: dotnet build Glidecast.sln -c Release
       - name: Portable package
         shell: pwsh
-        run: ./build.ps1 -SkipInstaller
+        # The runner has no FFmpeg; release builds bundle it locally.
+        run: ./build.ps1 -SkipInstaller -NoFFmpeg
       - uses: actions/upload-artifact@v4
         with:
           name: glidecast-portable
