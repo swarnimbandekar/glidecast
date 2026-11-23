@@ -10,6 +10,10 @@ public enum LogoCorner { TopLeft, TopRight, BottomLeft, BottomRight }
 
 public enum WebcamShape { Circle, Square, Oval }
 
+public enum KeystrokePosition { BottomCenter, BottomLeft, BottomRight, TopCenter, TopLeft, TopRight }
+
+public enum KeystrokeTheme { Dark, Light, Glass, Accent }
+
 /// <summary>Look of the composite. Lengths are in source-screen pixels, so the
 /// same style renders identically at preview and export resolutions. Colors are
 /// "#RRGGBB" strings so the settings round-trip through project.json.</summary>
@@ -37,7 +41,17 @@ public sealed class StyleSettings
     public bool DrawCursor { get; set; } = true;
     public bool DrawClicks { get; set; } = true;
     public bool DrawKeystrokes { get; set; } = true;
+    public KeystrokePosition KeystrokePosition { get; set; } = KeystrokePosition.BottomCenter;
+    public KeystrokeTheme KeystrokeTheme { get; set; } = KeystrokeTheme.Dark;
+    public float KeystrokeSize { get; set; } = 1.0f;
+    public float KeystrokeDuration { get; set; } = 1.4f;
+    public bool KeystrokeShortcutsOnly { get; set; }
     public bool DrawAnnotations { get; set; } = true;
+    public bool DrawStepAnnotations { get; set; } = true;
+    public bool DrawBoxAnnotations { get; set; } = true;
+    public bool DrawCaptionAnnotations { get; set; } = true;
+    public bool DrawSpotlightAnnotations { get; set; } = true;
+    public bool DrawArrowAnnotations { get; set; } = true;
     /// <summary>A short fading streak behind the moving cursor.</summary>
     public bool CursorTrail { get; set; }
 
@@ -234,7 +248,7 @@ public sealed class Compositor : IDisposable
             canvas.Save();
             canvas.ClipRoundRect(round, SKClipOperation.Intersect, antialias: true);
             AnnotationPainter.Draw(canvas, _p.Annotations, tMs, m, _unit * (float)Math.Sqrt(Camera.At(tMs).scale),
-                StyleSettings.ParseColor(st.Accent, new SKColor(0x3D, 0x7E, 0xFF)), round.Rect);
+                StyleSettings.ParseColor(st.Accent, new SKColor(0x3D, 0x7E, 0xFF)), round.Rect, st);
             canvas.Restore();
         }
         DrawOverlays(canvas, st, m, tMs);
@@ -486,64 +500,8 @@ public sealed class Compositor : IDisposable
         canvas.DrawPath(path, ring);
     }
 
-    private static readonly HashSet<string> Modifiers = new(StringComparer.OrdinalIgnoreCase)
-        { "Ctrl", "Shift", "Alt", "Win", "Right Ctrl", "Right Shift", "Right Alt", "Left Windows", "Right Windows" };
-
-    private void DrawKeystrokes(SKCanvas canvas, StyleSettings st, double tMs)
-    {
-        // Key-downs in the last 1.4 s, as individual keycaps, bottom-center.
-        const double Window = 1400;
-        var recent = new List<(string sym, double t)>();
-        for (int i = _p.Keys.Count - 1; i >= 0 && recent.Count < 8; i--)
-        {
-            var k = _p.Keys[i];
-            if (tMs < k.T) continue;
-            if (tMs - k.T > Window) break;
-            if (!k.Down) continue;
-            if (recent.Count > 0 && recent[0].sym == k.Symbol && recent[0].t - k.T < 60) continue; // auto-repeat
-            recent.Insert(0, (k.Symbol, k.T));
-        }
-        if (recent.Count == 0) return;
-        double newest = recent[^1].t;
-        float alpha = (float)Math.Clamp((Window - (tMs - newest)) / 250.0, 0, 1);
-        float appear = (float)Math.Clamp((tMs - recent[0].t) / 120.0, 0, 1);
-        alpha *= appear;
-        if (alpha <= 0) return;
-
-        float u = _unit * 1.25f;
-        using var font = new SKPaint
-        {
-            Color = SKColors.White.WithAlpha((byte)(255 * alpha)), IsAntialias = true, TextSize = 22 * u,
-            Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold),
-        };
-        float capH = 44 * u, gap = 8 * u, padX = 14 * u;
-        var widths = recent.Select(r => Math.Max(capH, font.MeasureText(r.sym) + 2 * padX)).ToList();
-        float total = widths.Sum() + gap * (widths.Count - 1);
-        float x = (OutW - total) / 2;
-        float y = OutH - OutH * st.PaddingFraction * 0.5f - capH * 0.5f - 10 * u + (1 - appear) * 10 * u;
-
-        using var tray = new SKPaint { Color = new SKColor(10, 12, 16, (byte)(150 * alpha)), IsAntialias = true };
-        tray.ImageFilter = SKImageFilter.CreateDropShadow(0, 4 * u, 10 * u, 10 * u, new SKColor(0, 0, 0, (byte)(90 * alpha)));
-        canvas.DrawRoundRect(new SKRoundRect(new SKRect(x - 10 * u, y - capH / 2 - 10 * u, x + total + 10 * u, y + capH / 2 + 12 * u), 16 * u), tray);
-
-        for (int i = 0; i < recent.Count; i++)
-        {
-            float w = widths[i];
-            var cap = new SKRect(x, y - capH / 2, x + w, y + capH / 2);
-            bool mod = Modifiers.Contains(recent[i].sym);
-            using var bottom = new SKPaint { Color = new SKColor(0, 0, 0, (byte)(140 * alpha)), IsAntialias = true };
-            canvas.DrawRoundRect(new SKRoundRect(new SKRect(cap.Left, cap.Top + 3 * u, cap.Right, cap.Bottom + 3 * u), 9 * u), bottom);
-            using var face = new SKPaint
-            {
-                Color = (mod ? new SKColor(0x3A, 0x3F, 0x4D) : new SKColor(0x2A, 0x2E, 0x38)).WithAlpha((byte)(255 * alpha)),
-                IsAntialias = true,
-            };
-            canvas.DrawRoundRect(new SKRoundRect(cap, 9 * u), face);
-            float tw = font.MeasureText(recent[i].sym);
-            canvas.DrawText(recent[i].sym, cap.MidX - tw / 2, cap.MidY + 8 * u, font);
-            x += w + gap;
-        }
-    }
+    private void DrawKeystrokes(SKCanvas canvas, StyleSettings st, double tMs) =>
+        KeycapPainter.Draw(canvas, _p.Keys, st, OutW, OutH, _unit, tMs);
 
     public void Dispose()
     {

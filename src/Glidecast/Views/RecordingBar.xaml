@@ -14,11 +14,36 @@
                 </StackPanel>
             </Border>
             <TextBlock x:Name="Clock" Text="0:00" FontSize="16" FontWeight="SemiBold" Typography.NumeralAlignment="Tabular" VerticalAlignment="Center" MinWidth="52" Margin="14,0,4,0" />
-            <TextBlock x:Name="Info" Style="{StaticResource Hint}" VerticalAlignment="Center" Margin="4,0,14,0" />
-            <Border x:Name="MarkHint" Visibility="Collapsed" Background="{StaticResource Panel3}" CornerRadius="5" Padding="6,2" Margin="0,0,12,0" VerticalAlignment="Center"
-                    ToolTip="Press F9 to highlight what's under the cursor at that moment">
-                <TextBlock Text="F9 mark" FontSize="11" FontWeight="Medium" Foreground="{StaticResource Subtext}" />
-            </Border>
+            <TextBlock x:Name="Info" Style="{StaticResource Hint}" VerticalAlignment="Center" Margin="4,0,10,0" />
+            <ToggleButton x:Name="AnnotateLiveToggle" Cursor="Hand" FocusVisualStyle="{x:Null}" VerticalAlignment="Center" Margin="0,0,6,0"
+                          Click="AnnotateLive_Click" ToolTip="Toggle recording annotations &amp; live on-screen preview">
+                <ToggleButton.Template>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="b" Background="{StaticResource Panel3}" BorderBrush="{StaticResource BorderStrong}" BorderThickness="1" CornerRadius="6" Padding="8,3">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock x:Name="ic" Style="{StaticResource Icon}" Text="&#xE70F;" FontSize="11" Foreground="{StaticResource Subtext}" Margin="0,0,5,0" />
+                                <TextBlock x:Name="tx" Text="Annotate" FontSize="11" FontWeight="Medium" Foreground="{StaticResource Subtext}" />
+                            </StackPanel>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="b" Property="Background" Value="{StaticResource Hover}" /></Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{StaticResource AccentSoft}" />
+                                <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource Accent}" />
+                                <Setter TargetName="ic" Property="Foreground" Value="{StaticResource AccentText}" />
+                                <Setter TargetName="tx" Property="Foreground" Value="{StaticResource Text}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </ToggleButton.Template>
+            </ToggleButton>
+            <Button x:Name="MarkButton" Style="{StaticResource GhostButton}" Padding="7,3" MinHeight="24" Margin="0,0,10,0" VerticalAlignment="Center"
+                    Click="Mark_Click" ToolTip="Add a highlight box at the cursor right now (F9)">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Style="{StaticResource Icon}" Text="&#xE734;" FontSize="11" Foreground="{StaticResource AccentText}" Margin="0,0,5,0" />
+                    <TextBlock x:Name="MarkButtonText" Text="Mark (F9)" FontSize="11" FontWeight="Medium" Foreground="{StaticResource Subtext}" />
+                </StackPanel>
+            </Button>
             <Rectangle Width="1" Height="20" Fill="{StaticResource BorderStrong}" Margin="0,0,6,0" />
             <Button x:Name="CancelButton" Style="{StaticResource IconButton}" Content="&#xE74D;" Click="Discard_Click" ToolTip="Discard recording" />
             <Button x:Name="StopButton" AutomationProperties.Name="Stop recording" Click="Stop_Click" Margin="6,0,0,0" ToolTip="Stop and open the editor">

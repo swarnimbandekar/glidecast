@@ -224,8 +224,20 @@
                     </Border>
                     <ComboBox x:Name="SpeakerPick" Style="{StaticResource Pick}" SelectionChanged="Inputs_Changed" />
                 </DockPanel>
-                <Rectangle Style="{StaticResource Divider}" Margin="0,14" />
-                <Button Height="36" Click="Teleprompter_Click" ToolTip="A script that scrolls while you talk; never recorded">
+                <Rectangle Style="{StaticResource Divider}" Margin="0,12" />
+                <CheckBox x:Name="AnnotateToggle" Style="{StaticResource Switch}" Click="Annotate_Changed" Margin="0,0,0,6">
+                    <StackPanel>
+                        <TextBlock Text="Record annotations" FontWeight="Medium" />
+                        <TextBlock Style="{StaticResource Hint}" Text="Track steps, boxes &amp; captions (toggle on/off after editing)" />
+                    </StackPanel>
+                </CheckBox>
+                <WrapPanel x:Name="AnnotateSubOptions" Margin="0,2,0,6">
+                    <CheckBox x:Name="HomeSteps" Content="Steps" Click="Annotate_Changed" Margin="0,0,12,4" ToolTip="Record step number badges on clicks" />
+                    <CheckBox x:Name="HomeBoxes" Content="Boxes" Click="Annotate_Changed" Margin="0,0,12,4" ToolTip="Record highlight boxes around clicked controls" />
+                    <CheckBox x:Name="HomeCaptions" Content="Captions" Click="Annotate_Changed" Margin="0,0,12,4" ToolTip="Record text callouts naming clicked controls" />
+                    <CheckBox x:Name="HomeLivePreview" Content="Live preview" Click="Annotate_Changed" Margin="0,0,0,4" ToolTip="Show live annotation boxes and badges on screen as you record" />
+                </WrapPanel>
+                <Button Height="34" Click="Teleprompter_Click" ToolTip="A script that scrolls while you talk; never recorded" Margin="0,4,0,0">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Style="{StaticResource Icon}" Text="&#xE8A5;" FontSize="13" Margin="0,0,9,0" />
                         <TextBlock Text="Teleprompter" />

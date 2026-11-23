@@ -88,13 +88,42 @@
                         </Border>
                         <CheckBox x:Name="AnnotateToggle" Style="{StaticResource Switch}" Margin="0,14,0,0" Click="Setting_Changed">
                             <StackPanel>
-                                <TextBlock Text="Annotate as I record" />
-                                <TextBlock Style="{StaticResource Hint}" TextWrapping="Wrap" Text="Numbered steps, boxes and captions for every click. F9 highlights any moment." />
+                                <TextBlock Text="Record annotations" />
+                                <TextBlock Style="{StaticResource Hint}" TextWrapping="Wrap" Text="Capture steps, boxes and captions on every click. Can be toggled on or off individually post-editing." />
                             </StackPanel>
                         </CheckBox>
+                        <StackPanel x:Name="AnnotateDetails" Margin="0,10,0,0">
+                            <WrapPanel Margin="0,0,0,6">
+                                <CheckBox x:Name="PrepSteps" Content="Step numbers" Click="Setting_Changed" Margin="0,0,14,6" />
+                                <CheckBox x:Name="PrepBoxes" Content="Highlight boxes" Click="Setting_Changed" Margin="0,0,14,6" />
+                                <CheckBox x:Name="PrepCaptions" Content="Captions" Click="Setting_Changed" Margin="0,0,0,6" />
+                            </WrapPanel>
+                            <CheckBox x:Name="PrepLivePreview" Style="{StaticResource Switch}" Click="Setting_Changed">
+                                <StackPanel>
+                                    <TextBlock Text="Live annotation preview" />
+                                    <TextBlock Style="{StaticResource Hint}" TextWrapping="Wrap" Text="Show annotation boxes and step badges live on screen while recording (not baked into raw video)." />
+                                </StackPanel>
+                            </CheckBox>
+                        </StackPanel>
                     </StackPanel>
                 </Border>
             </Popup>
+            <ToggleButton x:Name="AnnotateQuickToggle" Width="34" Height="34" ToolTip="Record annotations (Steps, Boxes, Captions) with live preview" Cursor="Hand" FocusVisualStyle="{x:Null}" Margin="2,0,0,0" Click="AnnotateQuick_Click">
+                <ToggleButton.Template>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="b" Background="Transparent" CornerRadius="7">
+                            <TextBlock x:Name="ic" Style="{StaticResource Icon}" Text="&#xE70F;" FontSize="14" Foreground="{StaticResource Subtext}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="b" Property="Background" Value="{StaticResource Hover}" /></Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{StaticResource AccentSoft}" />
+                                <Setter TargetName="ic" Property="Foreground" Value="{StaticResource AccentText}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </ToggleButton.Template>
+            </ToggleButton>
             <Button Style="{StaticResource IconButton}" Content="&#xE8A5;" Width="34" Height="34" Click="Teleprompter_Click" ToolTip="Teleprompter" Margin="2,0,0,0" />
 
             <Button Style="{StaticResource GhostButton}" Content="Cancel" Padding="12,0" Height="34" Margin="8,0,0,0" Click="Cancel_Click" />

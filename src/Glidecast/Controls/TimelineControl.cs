@@ -363,11 +363,16 @@ public sealed class TimelineControl : FrameworkElement
         dc.DrawRoundedRectangle(LaneBrush, null, new Rect(Gutter, NoteTop, Usable, NoteH), 6, 6);
         if (_project.Annotations is { Count: > 0 } notes)
         {
+            var st = _project.Style;
+            bool masterOn = st?.DrawAnnotations ?? true;
             foreach (var a in notes)
             {
+                bool active = masterOn && a.Enabled && Glidecast.Render.AnnotationPainter.IsKindEnabled(a.Kind, st);
                 var brush = NoteRow(a) switch { 0 => NoteBrush, 1 => NoteBoxBrush, _ => NoteTextBrush };
                 var r = NoteRect(a);
+                if (!active) dc.PushOpacity(0.28);
                 dc.DrawRoundedRectangle(brush, a == _note ? SelPen : null, r, 2.5, 2.5);
+                if (!active) dc.Pop();
             }
         }
         else

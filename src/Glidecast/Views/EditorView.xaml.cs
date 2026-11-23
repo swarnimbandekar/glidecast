@@ -450,7 +450,8 @@ public partial class EditorView : UserControl
     }
 
     private bool NoteVisible(Annotation a) =>
-        St.DrawAnnotations && _player.Position >= a.Start && _player.Position <= a.End;
+        St.DrawAnnotations && a.Enabled && AnnotationPainter.IsKindEnabled(a.Kind, St) &&
+        _player.Position >= a.Start && _player.Position <= a.End;
 
     private bool WebcamVisible() =>
         _player.HasWebcam && St.ShowWebcam && _p.Webcam is { FrameTimes.Count: > 0 } wc &&
@@ -823,10 +824,33 @@ public partial class EditorView : UserControl
         SmoothSlider.Value = st.CursorSmoothing;
         CursorToggle.IsChecked = st.DrawCursor;
         KeysToggle.IsChecked = st.DrawKeystrokes;
+        NotesKeysToggle.IsChecked = st.DrawKeystrokes;
+        BarKeysToggle.IsChecked = st.DrawKeystrokes;
+        KeystrokeOptions.IsEnabled = st.DrawKeystrokes;
+        KeystrokeOptions.Opacity = st.DrawKeystrokes ? 1.0 : 0.45;
+        foreach (var rb in new[] { KeyPosTL, KeyPosTC, KeyPosTR, KeyPosBL, KeyPosBC, KeyPosBR })
+            rb.IsChecked = (string)rb.Tag == st.KeystrokePosition.ToString();
+        foreach (var rb in new[] { KeyThemeDark, KeyThemeLight, KeyThemeGlass, KeyThemeAccent })
+            rb.IsChecked = (string)rb.Tag == st.KeystrokeTheme.ToString();
+        KeySizeSlider.Value = st.KeystrokeSize;
+        KeyDurationSlider.Value = st.KeystrokeDuration;
+        KeyShortcutsOnlyToggle.IsChecked = st.KeystrokeShortcutsOnly;
         MotionBlurToggle.IsChecked = st.MotionBlur;
         IdleToggle.IsChecked = st.HideIdleCursor;
         TrailToggle.IsChecked = st.CursorTrail;
         NotesToggle.IsChecked = st.DrawAnnotations;
+        ShowBoxesToggle.IsChecked = st.DrawBoxAnnotations;
+        ShowStepsToggle.IsChecked = st.DrawStepAnnotations;
+        ShowCaptionsToggle.IsChecked = st.DrawCaptionAnnotations;
+        ShowSpotlightsToggle.IsChecked = st.DrawSpotlightAnnotations;
+        ShowArrowsToggle.IsChecked = st.DrawArrowAnnotations;
+        NoteKindFilters.IsEnabled = st.DrawAnnotations;
+        NoteKindFilters.Opacity = st.DrawAnnotations ? 1.0 : 0.45;
+        BarNotesToggle.IsChecked = st.DrawAnnotations;
+        BarBoxesToggle.IsChecked = st.DrawBoxAnnotations;
+        BarStepsToggle.IsChecked = st.DrawStepAnnotations;
+        BarCaptionsToggle.IsChecked = st.DrawCaptionAnnotations;
+        BarBoxesToggle.IsEnabled = BarStepsToggle.IsEnabled = BarCaptionsToggle.IsEnabled = st.DrawAnnotations;
         foreach (var rb in new[] { AspSource, AspWide, AspVertical, AspSquare })
             rb.IsChecked = (string)rb.Tag == st.Aspect.ToString();
         foreach (var rb in new[] { LogoTL, LogoTR, LogoBL, LogoBR })
@@ -876,6 +900,8 @@ public partial class EditorView : UserControl
         BlurVal.Text = $"{St.BgBlur:0}";
         LogoSizeVal.Text = $"{St.LogoSize * 100:0}%";
         LogoOpacityVal.Text = $"{St.LogoOpacity * 100:0}%";
+        KeySizeVal.Text = $"{St.KeystrokeSize:0.0}×";
+        KeyDurationVal.Text = $"{St.KeystrokeDuration:0.0} s";
         SmoothVal.Text = St.CursorSmoothing < 0.05 ? "Off" : St.CursorSmoothing < 0.4 ? "Light" : St.CursorSmoothing < 0.75 ? "Smooth" : "Silky";
     }
 
@@ -892,16 +918,47 @@ public partial class EditorView : UserControl
         st.CursorSmoothing = (float)SmoothSlider.Value;
         st.DrawCursor = CursorToggle.IsChecked == true;
         st.DrawKeystrokes = KeysToggle.IsChecked == true;
+        if (NotesKeysToggle != null)
+        {
+            st.KeystrokeSize = (float)KeySizeSlider.Value;
+            st.KeystrokeDuration = (float)KeyDurationSlider.Value;
+            st.KeystrokeShortcutsOnly = KeyShortcutsOnlyToggle.IsChecked == true;
+            _loading = true;
+            NotesKeysToggle.IsChecked = st.DrawKeystrokes;
+            BarKeysToggle.IsChecked = st.DrawKeystrokes;
+            KeystrokeOptions.IsEnabled = st.DrawKeystrokes;
+            KeystrokeOptions.Opacity = st.DrawKeystrokes ? 1.0 : 0.45;
+            _loading = false;
+        }
         st.MotionBlur = MotionBlurToggle.IsChecked == true;
         st.HideIdleCursor = IdleToggle.IsChecked == true;
         st.CursorTrail = TrailToggle.IsChecked == true;
         st.DrawAnnotations = NotesToggle.IsChecked == true;
+        if (ShowBoxesToggle != null)
+        {
+            st.DrawBoxAnnotations = ShowBoxesToggle.IsChecked == true;
+            st.DrawStepAnnotations = ShowStepsToggle.IsChecked == true;
+            st.DrawCaptionAnnotations = ShowCaptionsToggle.IsChecked == true;
+            st.DrawSpotlightAnnotations = ShowSpotlightsToggle.IsChecked == true;
+            st.DrawArrowAnnotations = ShowArrowsToggle.IsChecked == true;
+            NoteKindFilters.IsEnabled = st.DrawAnnotations;
+            NoteKindFilters.Opacity = st.DrawAnnotations ? 1.0 : 0.45;
+            _loading = true;
+            BarNotesToggle.IsChecked = st.DrawAnnotations;
+            BarBoxesToggle.IsChecked = st.DrawBoxAnnotations;
+            BarStepsToggle.IsChecked = st.DrawStepAnnotations;
+            BarCaptionsToggle.IsChecked = st.DrawCaptionAnnotations;
+            BarBoxesToggle.IsEnabled = BarStepsToggle.IsEnabled = BarCaptionsToggle.IsEnabled = st.DrawAnnotations;
+            _loading = false;
+        }
         st.LogoSize = (float)LogoSizeSlider.Value;
         st.LogoOpacity = (float)LogoOpacitySlider.Value;
         _loading = true;
         SyncSizePreset();
         _loading = false;
         UpdateStyleLabels();
+        Timeline.InvalidateVisual();
+        UpdateOverlay();
         // Follow-cursor framing uses the smoothed cursor path.
         PushToPreview(cameraChanged: smoothingChanged && _p.Zoom!.FollowCursor);
         MarkDirty();
@@ -1101,6 +1158,61 @@ public partial class EditorView : UserControl
 
     // ---------------------------------------------------------------- annotations
 
+    private void BarNotes_Click(object sender, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        var st = St;
+        st.DrawAnnotations = BarNotesToggle.IsChecked == true;
+        st.DrawBoxAnnotations = BarBoxesToggle.IsChecked == true;
+        st.DrawStepAnnotations = BarStepsToggle.IsChecked == true;
+        st.DrawCaptionAnnotations = BarCaptionsToggle.IsChecked == true;
+        LoadStyleControls();
+        Timeline.InvalidateVisual();
+        UpdateOverlay();
+        PushToPreview(cameraChanged: false);
+        MarkDirty();
+    }
+
+    private void BarKeys_Click(object sender, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        St.DrawKeystrokes = BarKeysToggle.IsChecked == true;
+        LoadStyleControls();
+        PushToPreview(cameraChanged: false);
+        MarkDirty();
+    }
+
+    private void NotesKeys_Click(object sender, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        St.DrawKeystrokes = NotesKeysToggle.IsChecked == true;
+        LoadStyleControls();
+        PushToPreview(cameraChanged: false);
+        MarkDirty();
+    }
+
+    private void KeyPos_Checked(object sender, RoutedEventArgs e)
+    {
+        if (_loading || sender is not RadioButton rb) return;
+        if (Enum.TryParse<KeystrokePosition>((string)rb.Tag, out var pos))
+        {
+            St.KeystrokePosition = pos;
+            PushToPreview(cameraChanged: false);
+            MarkDirty();
+        }
+    }
+
+    private void KeyTheme_Checked(object sender, RoutedEventArgs e)
+    {
+        if (_loading || sender is not RadioButton rb) return;
+        if (Enum.TryParse<KeystrokeTheme>((string)rb.Tag, out var theme))
+        {
+            St.KeystrokeTheme = theme;
+            PushToPreview(cameraChanged: false);
+            MarkDirty();
+        }
+    }
+
     private void RefreshNote()
     {
         bool was = _loading;
@@ -1108,21 +1220,150 @@ public partial class EditorView : UserControl
         var n = Timeline.SelectedNote;
         NoteCard.Visibility = n != null ? Visibility.Visible : Visibility.Collapsed;
         int count = _p.Annotations?.Count ?? 0;
+        int enabledCount = _p.Annotations?.Count(a => a.Enabled) ?? 0;
         int named = _p.Clicks.Count(c => !string.IsNullOrWhiteSpace(c.Element?.Name));
-        NotesInfo.Text = (count == 0 ? "No annotations yet. " : $"{count} annotation{(count == 1 ? "" : "s")}. ") +
+        NotesInfo.Text = (count == 0 ? "No annotations yet. " : $"{enabledCount} of {count} annotation{(count == 1 ? "" : "s")} enabled. ") +
             (named > 0 ? $"{named} of {_p.Clicks.Count} clicks have a control name for captions." :
              _p.Clicks.Count > 0 ? "No control names were recorded, so captions will be skipped." : "");
         if (n != null)
         {
             if (TabNotes.IsChecked != true) TabNotes.IsChecked = true;
             NoteTitle.Text = n.Kind == AnnotationKind.Step ? $"Step {n.Number}" : n.Kind.ToString();
+            NoteEnabledToggle.IsChecked = n.Enabled;
             NoteTimes.Text = $"{TimelineControl.FormatTime(n.Start)} → {TimelineControl.FormatTime(n.End)}  ·  {(n.End - n.Start) / 1000:0.0} s";
             NoteText.Visibility = n.Kind == AnnotationKind.Callout ? Visibility.Visible : Visibility.Collapsed;
             NoteText.Text = n.Text ?? "";
             NoteNumberRow.Visibility = n.Kind == AnnotationKind.Step ? Visibility.Visible : Visibility.Collapsed;
             NoteNumber.Text = n.Number.ToString();
         }
+        BuildAnnotationChecklist();
         _loading = was;
+    }
+
+    private void BuildAnnotationChecklist()
+    {
+        if (AnnotationChecklist == null) return;
+        AnnotationChecklist.Children.Clear();
+        if (_p.Annotations is not { Count: > 0 } list) return;
+
+        foreach (var item in list)
+        {
+            var a = item;
+            bool isSel = a == Timeline.SelectedNote;
+            var row = new Border
+            {
+                CornerRadius = new CornerRadius(5),
+                Padding = new Thickness(6, 4, 6, 4),
+                Margin = new Thickness(0, 1, 0, 1),
+                Background = isSel ? (Brush)FindResource("AccentSoft") : Brushes.Transparent,
+                BorderBrush = isSel ? (Brush)FindResource("Accent") : Brushes.Transparent,
+                BorderThickness = new Thickness(1),
+            };
+            var dock = new DockPanel();
+
+            var timeText = new TextBlock
+            {
+                Text = TimelineControl.FormatTime(a.Start, tenths: false),
+                Style = (System.Windows.Style)FindResource("Value"),
+                Foreground = (Brush)FindResource("Muted"),
+                FontSize = 11,
+                Margin = new Thickness(8, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            DockPanel.SetDock(timeText, Dock.Right);
+            dock.Children.Add(timeText);
+
+            var cb = new CheckBox
+            {
+                IsChecked = a.Enabled,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 8, 0),
+                ToolTip = "Turn this annotation on or off in the live preview",
+            };
+            cb.Click += (_, e) =>
+            {
+                a.Enabled = cb.IsChecked == true;
+                if (Timeline.SelectedNote == a)
+                {
+                    _loading = true;
+                    NoteEnabledToggle.IsChecked = a.Enabled;
+                    _loading = false;
+                }
+                NotesEdited();
+                e.Handled = true;
+            };
+            DockPanel.SetDock(cb, Dock.Left);
+            dock.Children.Add(cb);
+
+            string badgeColor = a.Kind switch
+            {
+                AnnotationKind.Step or AnnotationKind.Arrow => "#FFB224",
+                AnnotationKind.Highlight or AnnotationKind.Spotlight => "#3DD68C",
+                _ => "#E93D82",
+            };
+            var dot = new System.Windows.Shapes.Ellipse
+            {
+                Width = 7,
+                Height = 7,
+                Fill = new SolidColorBrush(C(badgeColor)),
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(2, 0, 7, 0),
+            };
+            DockPanel.SetDock(dot, Dock.Left);
+            dock.Children.Add(dot);
+
+            string title = a.Kind switch
+            {
+                AnnotationKind.Step => $"Step {a.Number}",
+                AnnotationKind.Highlight => "Highlight box",
+                AnnotationKind.Spotlight => "Spotlight box",
+                AnnotationKind.Arrow => "Arrow",
+                AnnotationKind.Callout => string.IsNullOrWhiteSpace(a.Text) ? "Callout" : a.Text!,
+                _ => a.Label,
+            };
+            var lbl = new TextBlock
+            {
+                Text = title,
+                FontSize = 12,
+                Foreground = a.Enabled ? (Brush)FindResource("Text") : (Brush)FindResource("Muted"),
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                VerticalAlignment = VerticalAlignment.Center,
+                Cursor = Cursors.Hand,
+            };
+            dock.Children.Add(lbl);
+            row.Child = dock;
+
+            row.MouseLeftButtonDown += (_, e) =>
+            {
+                if (e.OriginalSource is CheckBox) return;
+                Timeline.SelectedNote = a;
+            };
+            AnnotationChecklist.Children.Add(row);
+        }
+    }
+
+    private void NoteEnabled_Click(object sender, RoutedEventArgs e)
+    {
+        if (_loading || Timeline.SelectedNote is not { } n) return;
+        n.Enabled = NoteEnabledToggle.IsChecked == true;
+        NotesEdited();
+    }
+
+    private void AllNotesOn_Click(object sender, RoutedEventArgs e)
+    {
+        if (_p.Annotations is not { Count: > 0 } list) return;
+        foreach (var a in list) a.Enabled = true;
+        St.DrawAnnotations = true;
+        St.DrawBoxAnnotations = St.DrawStepAnnotations = St.DrawCaptionAnnotations = St.DrawSpotlightAnnotations = St.DrawArrowAnnotations = true;
+        LoadStyleControls();
+        NotesEdited();
+    }
+
+    private void AllNotesOff_Click(object sender, RoutedEventArgs e)
+    {
+        if (_p.Annotations is not { Count: > 0 } list) return;
+        foreach (var a in list) a.Enabled = false;
+        NotesEdited();
     }
 
     private void NotesEdited()
@@ -1149,7 +1390,10 @@ public partial class EditorView : UserControl
             Captions = AutoCaptions.IsChecked == true,
         });
         St.DrawAnnotations = true;
-        NotesToggle.IsChecked = true;
+        if (AutoSteps.IsChecked == true) St.DrawStepAnnotations = true;
+        if (AutoBoxes.IsChecked == true) St.DrawBoxAnnotations = true;
+        if (AutoCaptions.IsChecked == true) St.DrawCaptionAnnotations = true;
+        LoadStyleControls();
         NotesEdited();
     }
 
@@ -1164,7 +1408,15 @@ public partial class EditorView : UserControl
         _p.Annotations.Add(a);
         _p.Annotations.Sort((m, n) => m.Start.CompareTo(n.Start));
         St.DrawAnnotations = true;
-        NotesToggle.IsChecked = true;
+        switch (kind)
+        {
+            case AnnotationKind.Step: St.DrawStepAnnotations = true; break;
+            case AnnotationKind.Highlight: St.DrawBoxAnnotations = true; break;
+            case AnnotationKind.Spotlight: St.DrawSpotlightAnnotations = true; break;
+            case AnnotationKind.Arrow: St.DrawArrowAnnotations = true; break;
+            case AnnotationKind.Callout: St.DrawCaptionAnnotations = true; break;
+        }
+        LoadStyleControls();
         Timeline.SelectedNote = a;
         NotesEdited();
         if (kind == AnnotationKind.Callout) { NoteText.Focus(); NoteText.SelectAll(); }

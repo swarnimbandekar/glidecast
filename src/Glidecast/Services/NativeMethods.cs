@@ -106,6 +106,12 @@ internal static class NativeMethods
         return new System.Drawing.Rectangle(0, 0, (int)Math.Round(SystemParameters.PrimaryScreenWidth * k), (int)Math.Round(SystemParameters.PrimaryScreenHeight * k));
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    public struct POINT { public int X, Y; }
+
+    [DllImport("user32.dll")]
+    public static extern bool GetCursorPos(out POINT lpPoint);
+
     public const int WM_HOTKEY = 0x0312;
 
     [DllImport("user32.dll", SetLastError = true)]

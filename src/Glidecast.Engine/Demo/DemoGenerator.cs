@@ -107,6 +107,8 @@ public static class DemoGenerator
         stream.Close();
         enc.WaitForExit(30000);
 
+        AnnotationAuthor.Regenerate(p);
+        p.Style = new StyleSettings { DrawAnnotations = true };
         p.Save(Path.Combine(dir, "project.json"));
         return p;
     }

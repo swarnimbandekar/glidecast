@@ -27,6 +27,10 @@ public sealed class RecordingSession
     public List<string> Warnings { get; } = new();
     /// <summary>The F9 hotkey is held by this take, so F9 presses are marks, not keystrokes.</summary>
     public bool MarkHotkey { get; set; }
+    /// <summary>Raised when a click is captured and resolved, for live on-screen annotation preview.</summary>
+    public event Action<ClickEvent>? LiveClick;
+    /// <summary>Raised when F9 is pressed, with the current cursor screen coordinates.</summary>
+    public event Action<int, int>? LiveMark;
 
     private readonly CameraFeed? _cameraFeed;
 
@@ -47,6 +51,7 @@ public sealed class RecordingSession
             ? new ScreenRecorder(_clock, src, fps, r.X, r.Y, r.Width, r.Height)
             : new ScreenRecorder(_clock, src, fps);
         _input = new InputHook(_clock);
+        _input.LiveClick += c => LiveClick?.Invoke(c);
         if (_options.SystemAudio)
             _audio.Add(new AudioRecorder(_clock, Path.Combine(Directory, "system.wav"), AudioSource.System, _options.SpeakerId));
         if (_options.Microphone)
@@ -81,6 +86,8 @@ public sealed class RecordingSession
     public void Mark()
     {
         lock (_marks) _marks.Add(_clock.Elapsed.TotalMilliseconds);
+        if (NativeMethods.GetCursorPos(out var pt))
+            LiveMark?.Invoke(pt.X, pt.Y);
     }
 
     /// <summary>Stops capture and writes project.json. Clicks inside
@@ -154,7 +161,16 @@ public sealed class RecordingSession
     /// <summary>The auto walkthrough (if chosen) and a highlight for every F9 mark.</summary>
     private void AddAnnotations(Project p)
     {
-        if (_options.Annotate && p.Clicks.Count > 0) AnnotationAuthor.Regenerate(p);
+        if (p.Clicks.Count > 0)
+        {
+            // Always author the recorded annotations into the project so they can be turned on or off in the editor post-recording.
+            AnnotationAuthor.Regenerate(p, new AnnotateOptions
+            {
+                Steps = _options.AnnotateSteps,
+                Highlights = _options.AnnotateBoxes,
+                Captions = _options.AnnotateCaptions,
+            });
+        }
 
         List<double> marks;
         lock (_marks) marks = _marks.ToList();
@@ -176,7 +192,10 @@ public sealed class RecordingSession
         if (p.Annotations is { Count: > 0 })
         {
             p.Annotations.Sort((m, n) => m.Start.CompareTo(n.Start));
-            p.Style!.DrawAnnotations = true;
+            p.Style!.DrawAnnotations = _options.Annotate || marks.Count > 0;
+            p.Style.DrawStepAnnotations = _options.AnnotateSteps;
+            p.Style.DrawBoxAnnotations = _options.AnnotateBoxes;
+            p.Style.DrawCaptionAnnotations = _options.AnnotateCaptions;
         }
     }
 }

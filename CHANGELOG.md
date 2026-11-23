@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.2.3 — 2026-11-23
+
+- **Live annotation controls & preview**: toggle recorded annotations on/off
+  while recording (with optional live on-screen preview overlay) and filter
+  individual annotation layers (boxes, steps, captions, spotlights, arrows)
+  and items in the editor.
+- **Fixed & customizable keyboard buttons**: fixed extended key names (arrows,
+  Delete, Home/End, Page Up/Down), filtered OS key-repeat duplicates, grouped
+  modifier shortcuts (`Ctrl + B`), and added a **Keyboard buttons** section in
+  the **Annotate** tab to toggle them on/off and customize position, theme,
+  size, display duration, and shortcuts-only mode.
+
 ## 1.2.2 — 2026-10-24
 
 - **Fixed "Could not start recording … untrusted mount point".** On some PCs

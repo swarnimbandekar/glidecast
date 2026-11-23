@@ -135,6 +135,33 @@
                                 <TextBlock Text="Add zoom" FontSize="12" />
                             </StackPanel>
                         </Button>
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="0,0,14,0" VerticalAlignment="Center">
+                            <ToggleButton x:Name="BarNotesToggle" Cursor="Hand" FocusVisualStyle="{x:Null}" Click="BarNotes_Click" ToolTip="Toggle all annotations on/off in live preview and export">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border x:Name="b" Background="{StaticResource Panel2}" BorderBrush="{StaticResource BorderStrong}" BorderThickness="1" CornerRadius="5" Padding="8,4">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock x:Name="ic" Style="{StaticResource Icon}" Text="&#xE70F;" FontSize="11" Foreground="{StaticResource Subtext}" Margin="0,0,5,0" />
+                                                <TextBlock x:Name="tx" Text="Annotations" FontSize="11.5" FontWeight="Medium" Foreground="{StaticResource Subtext}" />
+                                            </StackPanel>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="b" Property="Background" Value="{StaticResource Hover}" /></Trigger>
+                                            <Trigger Property="IsChecked" Value="True">
+                                                <Setter TargetName="b" Property="Background" Value="{StaticResource AccentSoft}" />
+                                                <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource Accent}" />
+                                                <Setter TargetName="ic" Property="Foreground" Value="{StaticResource AccentText}" />
+                                                <Setter TargetName="tx" Property="Foreground" Value="{StaticResource Text}" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+                            <CheckBox x:Name="BarBoxesToggle" Content="Boxes" Margin="8,0,0,0" VerticalAlignment="Center" FontSize="11.5" Click="BarNotes_Click" ToolTip="Show/hide highlight boxes in live preview" />
+                            <CheckBox x:Name="BarStepsToggle" Content="Steps" Margin="8,0,0,0" VerticalAlignment="Center" FontSize="11.5" Click="BarNotes_Click" ToolTip="Show/hide step badges in live preview" />
+                            <CheckBox x:Name="BarCaptionsToggle" Content="Captions" Margin="8,0,0,0" VerticalAlignment="Center" FontSize="11.5" Click="BarNotes_Click" ToolTip="Show/hide text captions in live preview" />
+                            <CheckBox x:Name="BarKeysToggle" Content="Keys" Margin="8,0,0,0" VerticalAlignment="Center" FontSize="11.5" Click="BarKeys_Click" ToolTip="Show/hide keyboard buttons in live preview and export" />
+                        </StackPanel>
                     </DockPanel>
                     <c:TimelineControl x:Name="Timeline" Margin="0,0,0,6" />
                 </DockPanel>
@@ -361,23 +388,65 @@
 
                             <!-- ANNOTATE -->
                             <StackPanel x:Name="NotesPanel" Visibility="Collapsed">
-                                <TextBlock Text="Auto walkthrough" Style="{StaticResource SectionLabel}" />
-                                <CheckBox x:Name="AutoSteps" Style="{StaticResource Switch}" IsChecked="True">
-                                    <StackPanel><TextBlock Text="Step numbers" /><TextBlock Text="A numbered badge on every click." Style="{StaticResource Hint}" /></StackPanel>
-                                </CheckBox>
-                                <CheckBox x:Name="AutoBoxes" Style="{StaticResource Switch}" IsChecked="True" Margin="0,10,0,0">
-                                    <StackPanel><TextBlock Text="Highlight boxes" /><TextBlock Text="Outline the control that was clicked." Style="{StaticResource Hint}" /></StackPanel>
-                                </CheckBox>
-                                <CheckBox x:Name="AutoCaptions" Style="{StaticResource Switch}" IsChecked="True" Margin="0,10,0,0">
-                                    <StackPanel><TextBlock Text="Captions" /><TextBlock Text="Click “Save”, named from the app's own labels." Style="{StaticResource Hint}" /></StackPanel>
-                                </CheckBox>
-                                <Button HorizontalAlignment="Left" Margin="0,14,0,0" Click="GenerateNotes_Click">
-                                    <StackPanel Orientation="Horizontal">
-                                        <TextBlock Style="{StaticResource Icon}" Text="&#xE945;" FontSize="12" Margin="0,0,8,0" Foreground="{StaticResource AccentText}" />
-                                        <TextBlock Text="Generate from clicks" />
+                                <CheckBox x:Name="NotesToggle" Style="{StaticResource Switch}" Click="Style_Changed" Margin="0,18,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="Show annotations" FontWeight="SemiBold" />
+                                        <TextBlock Text="Toggle recorded annotations on or off in the live preview and exported video." Style="{StaticResource Hint}" />
                                     </StackPanel>
-                                </Button>
-                                <TextBlock x:Name="NotesInfo" Style="{StaticResource Hint}" Margin="0,8,0,0" TextWrapping="Wrap" />
+                                </CheckBox>
+
+                                <TextBlock Text="Visible layers" Style="{StaticResource SectionLabel}" />
+                                <StackPanel x:Name="NoteKindFilters">
+                                    <CheckBox x:Name="ShowBoxesToggle" Style="{StaticResource Switch}" Click="Style_Changed">
+                                        <StackPanel><TextBlock Text="Highlight boxes" /><TextBlock Text="Show or hide all recorded highlight boxes." Style="{StaticResource Hint}" /></StackPanel>
+                                    </CheckBox>
+                                    <CheckBox x:Name="ShowStepsToggle" Style="{StaticResource Switch}" Click="Style_Changed" Margin="0,8,0,0">
+                                        <StackPanel><TextBlock Text="Step numbers" /><TextBlock Text="Show or hide numbered click badges." Style="{StaticResource Hint}" /></StackPanel>
+                                    </CheckBox>
+                                    <CheckBox x:Name="ShowCaptionsToggle" Style="{StaticResource Switch}" Click="Style_Changed" Margin="0,8,0,0">
+                                        <StackPanel><TextBlock Text="Captions &amp; callouts" /><TextBlock Text="Show or hide Click “Save” labels and callout notes." Style="{StaticResource Hint}" /></StackPanel>
+                                    </CheckBox>
+                                    <CheckBox x:Name="ShowSpotlightsToggle" Style="{StaticResource Switch}" Click="Style_Changed" Margin="0,8,0,0">
+                                        <StackPanel><TextBlock Text="Spotlights" /><TextBlock Text="Show or hide dimmed spotlight cutouts." Style="{StaticResource Hint}" /></StackPanel>
+                                    </CheckBox>
+                                    <CheckBox x:Name="ShowArrowsToggle" Style="{StaticResource Switch}" Click="Style_Changed" Margin="0,8,0,0">
+                                        <StackPanel><TextBlock Text="Arrows" /><TextBlock Text="Show or hide pointer arrows." Style="{StaticResource Hint}" /></StackPanel>
+                                    </CheckBox>
+                                </StackPanel>
+
+                                <TextBlock Text="Keyboard buttons" Style="{StaticResource SectionLabel}" />
+                                <CheckBox x:Name="NotesKeysToggle" Style="{StaticResource Switch}" Click="NotesKeys_Click">
+                                    <StackPanel><TextBlock Text="Show keyboard buttons" /><TextBlock Text="Display pressed keys and shortcuts as keycaps." Style="{StaticResource Hint}" /></StackPanel>
+                                </CheckBox>
+                                <StackPanel x:Name="KeystrokeOptions" Margin="0,12,0,0">
+                                    <TextBlock Text="Position" Style="{StaticResource Hint}" Margin="0,0,0,6" />
+                                    <Border Style="{StaticResource SegmentHost}" HorizontalAlignment="Stretch">
+                                        <UniformGrid Columns="3" Rows="2">
+                                            <RadioButton x:Name="KeyPosTL" Content="↖ Top left" Tag="TopLeft" Style="{StaticResource Segment}" GroupName="keypos" Padding="2,5" FontSize="11.5" Checked="KeyPos_Checked" />
+                                            <RadioButton x:Name="KeyPosTC" Content="↑ Top" Tag="TopCenter" Style="{StaticResource Segment}" GroupName="keypos" Padding="2,5" FontSize="11.5" Checked="KeyPos_Checked" />
+                                            <RadioButton x:Name="KeyPosTR" Content="↗ Top right" Tag="TopRight" Style="{StaticResource Segment}" GroupName="keypos" Padding="2,5" FontSize="11.5" Checked="KeyPos_Checked" />
+                                            <RadioButton x:Name="KeyPosBL" Content="↙ Bot left" Tag="BottomLeft" Style="{StaticResource Segment}" GroupName="keypos" Padding="2,5" FontSize="11.5" Checked="KeyPos_Checked" />
+                                            <RadioButton x:Name="KeyPosBC" Content="↓ Bottom" Tag="BottomCenter" Style="{StaticResource Segment}" GroupName="keypos" Padding="2,5" FontSize="11.5" Checked="KeyPos_Checked" />
+                                            <RadioButton x:Name="KeyPosBR" Content="↘ Bot right" Tag="BottomRight" Style="{StaticResource Segment}" GroupName="keypos" Padding="2,5" FontSize="11.5" Checked="KeyPos_Checked" />
+                                        </UniformGrid>
+                                    </Border>
+                                    <TextBlock Text="Theme" Style="{StaticResource Hint}" Margin="0,10,0,6" />
+                                    <Border Style="{StaticResource SegmentHost}" HorizontalAlignment="Stretch">
+                                        <UniformGrid Columns="4">
+                                            <RadioButton x:Name="KeyThemeDark" Content="Dark" Tag="Dark" Style="{StaticResource Segment}" GroupName="keytheme" Checked="KeyTheme_Checked" />
+                                            <RadioButton x:Name="KeyThemeLight" Content="Light" Tag="Light" Style="{StaticResource Segment}" GroupName="keytheme" Checked="KeyTheme_Checked" />
+                                            <RadioButton x:Name="KeyThemeGlass" Content="Glass" Tag="Glass" Style="{StaticResource Segment}" GroupName="keytheme" Checked="KeyTheme_Checked" />
+                                            <RadioButton x:Name="KeyThemeAccent" Content="Accent" Tag="Accent" Style="{StaticResource Segment}" GroupName="keytheme" Checked="KeyTheme_Checked" />
+                                        </UniformGrid>
+                                    </Border>
+                                    <DockPanel Style="{StaticResource Row}"><TextBlock x:Name="KeySizeVal" Style="{StaticResource Value}" DockPanel.Dock="Right" /><TextBlock Text="Size" /></DockPanel>
+                                    <Slider x:Name="KeySizeSlider" Minimum="0.7" Maximum="1.6" ValueChanged="Style_Changed" />
+                                    <DockPanel Style="{StaticResource Row}"><TextBlock x:Name="KeyDurationVal" Style="{StaticResource Value}" DockPanel.Dock="Right" /><TextBlock Text="Display duration" /></DockPanel>
+                                    <Slider x:Name="KeyDurationSlider" Minimum="0.6" Maximum="3.0" ValueChanged="Style_Changed" />
+                                    <CheckBox x:Name="KeyShortcutsOnlyToggle" Style="{StaticResource Switch}" Click="Style_Changed" Margin="0,10,0,0">
+                                        <StackPanel><TextBlock Text="Shortcuts only" /><TextBlock Text="Hide regular typing; show modifier combos and special keys." Style="{StaticResource Hint}" TextWrapping="Wrap" /></StackPanel>
+                                    </CheckBox>
+                                </StackPanel>
 
                                 <TextBlock Text="Add at playhead" Style="{StaticResource SectionLabel}" />
                                 <WrapPanel>
@@ -392,6 +461,7 @@
                                     <StackPanel>
                                         <DockPanel>
                                             <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE74D;" Click="DeleteNote_Click" ToolTip="Delete (Del)" Foreground="{StaticResource Danger}" Width="30" Height="30" />
+                                            <CheckBox x:Name="NoteEnabledToggle" DockPanel.Dock="Right" Content="Visible" VerticalAlignment="Center" Margin="0,0,10,0" Click="NoteEnabled_Click" ToolTip="Turn this specific annotation box/item on or off" />
                                             <TextBlock x:Name="NoteTitle" FontWeight="SemiBold" VerticalAlignment="Center" />
                                         </DockPanel>
                                         <TextBlock x:Name="NoteTimes" Style="{StaticResource Hint}" Typography.NumeralAlignment="Tabular" Margin="0,4,0,8" />
@@ -410,9 +480,37 @@
                                     </StackPanel>
                                 </Border>
 
-                                <CheckBox x:Name="NotesToggle" Style="{StaticResource Switch}" Click="Style_Changed" Margin="0,16,0,0">
-                                    <TextBlock Text="Show annotations" />
+                                <DockPanel Margin="0,20,0,8">
+                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Button Content="All on" Padding="8,3" MinHeight="24" FontSize="11.5" Margin="0,0,6,0" Click="AllNotesOn_Click" ToolTip="Turn on all recorded annotations" />
+                                        <Button Content="All off" Padding="8,3" MinHeight="24" FontSize="11.5" Click="AllNotesOff_Click" ToolTip="Turn off all recorded annotations" />
+                                    </StackPanel>
+                                    <TextBlock Text="Recorded annotations" FontWeight="Medium" Foreground="{StaticResource Subtext}" FontSize="12" VerticalAlignment="Center" />
+                                </DockPanel>
+                                <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,8" Text="Check or uncheck any item below to turn it on or off in the live preview. Click an item to jump to it." />
+                                <Border Style="{StaticResource Card}" Padding="8">
+                                    <StackPanel>
+                                        <TextBlock x:Name="NotesInfo" Style="{StaticResource Hint}" Margin="4,2,4,6" TextWrapping="Wrap" />
+                                        <StackPanel x:Name="AnnotationChecklist" />
+                                    </StackPanel>
+                                </Border>
+
+                                <TextBlock Text="Auto walkthrough generator" Style="{StaticResource SectionLabel}" />
+                                <CheckBox x:Name="AutoSteps" Style="{StaticResource Switch}" IsChecked="True">
+                                    <StackPanel><TextBlock Text="Generate step numbers" /><TextBlock Text="A numbered badge on every click." Style="{StaticResource Hint}" /></StackPanel>
                                 </CheckBox>
+                                <CheckBox x:Name="AutoBoxes" Style="{StaticResource Switch}" IsChecked="True" Margin="0,10,0,0">
+                                    <StackPanel><TextBlock Text="Generate highlight boxes" /><TextBlock Text="Outline the control or click area." Style="{StaticResource Hint}" /></StackPanel>
+                                </CheckBox>
+                                <CheckBox x:Name="AutoCaptions" Style="{StaticResource Switch}" IsChecked="True" Margin="0,10,0,0">
+                                    <StackPanel><TextBlock Text="Generate captions" /><TextBlock Text="Click “Save”, named from the app's own labels." Style="{StaticResource Hint}" /></StackPanel>
+                                </CheckBox>
+                                <Button HorizontalAlignment="Left" Margin="0,14,0,0" Click="GenerateNotes_Click">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Style="{StaticResource Icon}" Text="&#xE945;" FontSize="12" Margin="0,0,8,0" Foreground="{StaticResource AccentText}" />
+                                        <TextBlock Text="Rebuild from clicks" />
+                                    </StackPanel>
+                                </Button>
                             </StackPanel>
 
                             <!-- MEDIA: camera and audio -->

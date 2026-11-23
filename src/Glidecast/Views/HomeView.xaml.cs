@@ -40,6 +40,13 @@ public partial class HomeView : UserControl
     private async Task LoadInputsAsync()
     {
         _loading = true;
+        AnnotateToggle.IsChecked = _options.Annotate;
+        HomeSteps.IsChecked = _options.AnnotateSteps;
+        HomeBoxes.IsChecked = _options.AnnotateBoxes;
+        HomeCaptions.IsChecked = _options.AnnotateCaptions;
+        HomeLivePreview.IsChecked = _options.LiveAnnotationPreview;
+        AnnotateSubOptions.Opacity = _options.Annotate ? 1.0 : 0.45;
+        AnnotateSubOptions.IsEnabled = _options.Annotate;
         DevicePickers.FillMicrophones(MicPick, _options);
         DevicePickers.FillSpeakers(SpeakerPick, _options);
         CameraPick.ItemsSource = new[] { new DeviceChoice("Looking for cameras…", null) };
@@ -58,6 +65,19 @@ public partial class HomeView : UserControl
     {
         if (_loading) return;
         DevicePickers.Read(CameraPick, MicPick, SpeakerPick, _options);
+        _options.Save();
+    }
+
+    private void Annotate_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        _options.Annotate = AnnotateToggle.IsChecked == true;
+        _options.AnnotateSteps = HomeSteps.IsChecked == true;
+        _options.AnnotateBoxes = HomeBoxes.IsChecked == true;
+        _options.AnnotateCaptions = HomeCaptions.IsChecked == true;
+        _options.LiveAnnotationPreview = HomeLivePreview.IsChecked == true;
+        AnnotateSubOptions.Opacity = _options.Annotate ? 1.0 : 0.45;
+        AnnotateSubOptions.IsEnabled = _options.Annotate;
         _options.Save();
     }
 

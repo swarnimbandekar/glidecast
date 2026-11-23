@@ -37,6 +37,9 @@ public sealed class InputHook : IDisposable
     /// typing (UI Automation). Set before <see cref="Start"/>.</summary>
     public bool ProbeUi { get; set; } = true;
 
+    /// <summary>Raised when a click's UI element lookup completes (or on click if ProbeUi is false), for live preview overlays.</summary>
+    public event Action<ClickEvent>? LiveClick;
+
     public void Start()
     {
         if (ProbeUi)
@@ -44,6 +47,7 @@ public sealed class InputHook : IDisposable
             _probe = new UiProbe();
             _probe.ClickResolved = (i, el, panel) =>
             {
+                ClickEvent resolved;
                 lock (_gate)
                 {
                     if (i >= _clicks.Count) return;
@@ -51,7 +55,9 @@ public sealed class InputHook : IDisposable
                     c.Element = el;
                     c.Container = panel;
                     _clicks[i] = c;
+                    resolved = c;
                 }
+                LiveClick?.Invoke(resolved);
             };
             _probe.CaretResolved = k => { lock (_gate) _carets.Add(k); };
         }
@@ -111,6 +117,7 @@ public sealed class InputHook : IDisposable
 
     private void AddClick(double t, int x, int y, int button)
     {
+        ClickEvent? instant = null;
         lock (_gate)
         {
             // Collapse a quick second press at the same spot into a double-click.
@@ -122,9 +129,12 @@ public sealed class InputHook : IDisposable
                     Math.Abs(prev.X - x) < 6 && Math.Abs(prev.Y - y) < 6)
                     count = prev.Count + 1;
             }
-            _clicks.Add(new ClickEvent { T = t, X = x, Y = y, Button = button, Count = count });
-            if (count == 1) _probe?.Click(_clicks.Count - 1, x, y);
+            var ev = new ClickEvent { T = t, X = x, Y = y, Button = button, Count = count };
+            _clicks.Add(ev);
+            if (count == 1 && _probe != null) _probe.Click(_clicks.Count - 1, x, y);
+            else if (count == 1) instant = ev;
         }
+        if (instant is { } ic) LiveClick?.Invoke(ic);
     }
 
     private IntPtr KeyProc(int nCode, IntPtr wParam, IntPtr lParam)
@@ -138,7 +148,7 @@ public sealed class InputHook : IDisposable
             {
                 var data = Marshal.PtrToStructure<Win32.KBDLLHOOKSTRUCT>(lParam);
                 double t = _clock.Elapsed.TotalMilliseconds;
-                string sym = KeyName(data.vkCode, data.scanCode);
+                string sym = KeyName(data.vkCode, data.scanCode, data.flags);
                 lock (_gate) _keys.Add(new KeyEvent { T = t, Symbol = sym, Down = down });
                 // Sample the caret a little after typing (the app moves it on key-down).
                 if (down && _probe != null && !IsModifier(data.vkCode) && t - _lastCaretProbeMs > 120)
@@ -154,12 +164,13 @@ public sealed class InputHook : IDisposable
     // Shift, Ctrl, Alt, Win (left/right variants included).
     private static bool IsModifier(uint vk) => vk is >= 0x10 and <= 0x12 or >= 0xA0 and <= 0xA5 or 0x5B or 0x5C;
 
-    private static string KeyName(uint vk, uint scan)
+    private static string KeyName(uint vk, uint scan, uint flags)
     {
         var buf = new char[64];
         // Synthesized input (remote desktop, automation, some macro keyboards) carries no scan code.
         if (scan == 0) scan = Win32.MapVirtualKey(vk, 0 /* MAPVK_VK_TO_VSC */);
-        int lParam = (int)(scan << 16);
+        // Bit 24 is the extended-key flag (LLKHF_EXTENDED); without it arrows/Del/Home/PgUp map to Numpad names.
+        int lParam = (int)((scan << 16) | ((flags & 0x01) != 0 ? (1u << 24) : 0u));
         int n = Win32.GetKeyNameTextW(lParam, buf, buf.Length);
         if (n > 0) return new string(buf, 0, n);
         return "VK" + vk;

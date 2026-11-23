@@ -23,7 +23,12 @@ public sealed class RecordOptions
     public float CameraX { get; set; }
     public float CameraY { get; set; } = 1f;
     /// <summary>Number the clicks, box what was clicked and caption it when the take ends.</summary>
-    public bool Annotate { get; set; }
+    public bool Annotate { get; set; } = true;
+    public bool AnnotateSteps { get; set; } = true;
+    public bool AnnotateBoxes { get; set; } = true;
+    public bool AnnotateCaptions { get; set; } = true;
+    /// <summary>Show a live click-through preview of step badges, highlight boxes and captions on screen while recording.</summary>
+    public bool LiveAnnotationPreview { get; set; } = true;
     /// <summary>Seconds of countdown before capture starts (0, 3 or 5).</summary>
     public int Countdown { get; set; } = 3;
     public bool Fps60 { get; set; }

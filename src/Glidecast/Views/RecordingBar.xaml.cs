@@ -29,6 +29,7 @@ public partial class RecordingBar : Window
 
     private readonly RecordOptions _options;
     private readonly CameraBubbleWindow? _bubble;
+    private LiveAnnotationOverlayWindow? _liveOverlay;
 
     /// <param name="bubble">The floating camera from the pre-record step; its feed is recorded and it closes with the take.</param>
     public RecordingBar(string dir, System.Drawing.Rectangle? region, RecordOptions options, string label, CameraBubbleWindow? bubble)
@@ -46,9 +47,22 @@ public partial class RecordingBar : Window
         if (options.SystemAudio) bits.Add("sound");
         Info.Text = string.Join(" · ", bits);
         Clock.Text = _countdown > 0 ? _countdown.ToString() : "0:00";
+        AnnotateLiveToggle.IsChecked = options.Annotate;
         StopButton.IsEnabled = false;
         _timer.Tick += Tick;
         _markFlash.Tick += (_, _) => { _markFlash.Stop(); RecLabel.Text = "REC"; };
+
+        _session.LiveClick += c => Dispatcher.BeginInvoke(() =>
+        {
+            if (!_recording || _liveOverlay == null) return;
+            var barRect = NativeMethods.ScreenRect(Chrome);
+            barRect.Inflate(4, 4);
+            _liveOverlay.ShowClick(c, barRect);
+        });
+        _session.LiveMark += (x, y) => Dispatcher.BeginInvoke(() =>
+        {
+            if (_recording) _liveOverlay?.ShowMark(x, y);
+        });
 
         SourceInitialized += (_, _) =>
         {
@@ -56,7 +70,7 @@ public partial class RecordingBar : Window
             _hwnd = HwndSource.FromHwnd(new WindowInteropHelper(this).Handle);
             _hwnd.AddHook(WndProc);
             _session.MarkHotkey = NativeMethods.RegisterHotKey(_hwnd.Handle, MarkHotkeyId, 0, 0x78 /* VK_F9 */);
-            MarkHint.Visibility = _session.MarkHotkey ? Visibility.Visible : Visibility.Collapsed;
+            MarkButtonText.Text = _session.MarkHotkey ? "Mark (F9)" : "Mark";
         };
         Closed += (_, _) => { if (_hwnd != null) NativeMethods.UnregisterHotKey(_hwnd.Handle, MarkHotkeyId); };
         Loaded += (_, _) =>
@@ -167,6 +181,8 @@ public partial class RecordingBar : Window
         {
             _recording = true;
             StopButton.IsEnabled = true;
+            _liveOverlay = new LiveAnnotationOverlayWindow(_region, _options);
+            _liveOverlay.Show();
             if (_session.Warnings.Count > 0)
             {
                 Info.Text += " · " + (_session.Warnings.Count == 1 ? "1 source failed" : $"{_session.Warnings.Count} sources failed");
@@ -214,9 +230,26 @@ public partial class RecordingBar : Window
         Finish(null);
     }
 
+    private void AnnotateLive_Click(object sender, RoutedEventArgs e)
+    {
+        _options.Annotate = AnnotateLiveToggle.IsChecked == true;
+        _options.Save();
+    }
+
+    private void Mark_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_recording) return;
+        _session.Mark();
+        RecLabel.Text = "MARKED";
+        _markFlash.Stop();
+        _markFlash.Start();
+    }
+
     private void Finish(string? projectFile)
     {
         _countdownWindow?.Close();
+        _liveOverlay?.Close();
+        _liveOverlay = null;
         _bubble?.Close();
         _done.TrySetResult(projectFile);
         Close();

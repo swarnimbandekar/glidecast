@@ -14,14 +14,15 @@ public static class AnnotationPainter
 
     /// <param name="u">Output pixels per style unit (already includes the zoom boost).</param>
     /// <param name="bounds">The visible card, for keeping labels on screen.</param>
-    public static void Draw(SKCanvas canvas, IReadOnlyList<Annotation> list, double tMs, SKMatrix m, float u, SKColor accent, SKRect bounds)
+    public static void Draw(SKCanvas canvas, IReadOnlyList<Annotation> list, double tMs, SKMatrix m, float u, SKColor accent, SKRect bounds,
+        StyleSettings? style = null)
     {
         // Spotlights first: they dim everything else, including other annotations' surroundings.
         foreach (var a in list)
-            if (a.Kind == AnnotationKind.Spotlight && Visible(a, tMs, out float k)) Spotlight(canvas, a, m, u, k, bounds);
+            if (a.Kind == AnnotationKind.Spotlight && IsKindEnabled(a.Kind, style) && Visible(a, tMs, out float k)) Spotlight(canvas, a, m, u, k, bounds);
         foreach (var a in list)
         {
-            if (a.Kind == AnnotationKind.Spotlight || !Visible(a, tMs, out float k)) continue;
+            if (a.Kind == AnnotationKind.Spotlight || !IsKindEnabled(a.Kind, style) || !Visible(a, tMs, out float k)) continue;
             var color = StyleSettings.ParseColor(a.Color, accent);
             switch (a.Kind)
             {
@@ -31,6 +32,20 @@ public static class AnnotationPainter
                 case AnnotationKind.Callout: Callout(canvas, a, m, u, k, color, bounds); break;
             }
         }
+    }
+
+    public static bool IsKindEnabled(AnnotationKind kind, StyleSettings? st)
+    {
+        if (st == null) return true;
+        return kind switch
+        {
+            AnnotationKind.Step => st.DrawStepAnnotations,
+            AnnotationKind.Highlight => st.DrawBoxAnnotations,
+            AnnotationKind.Spotlight => st.DrawSpotlightAnnotations,
+            AnnotationKind.Arrow => st.DrawArrowAnnotations,
+            AnnotationKind.Callout => st.DrawCaptionAnnotations,
+            _ => true,
+        };
     }
 
     /// <summary>The area an annotation covers in output pixels when fully shown,
@@ -102,7 +117,7 @@ public static class AnnotationPainter
     private static bool Visible(Annotation a, double t, out float k)
     {
         k = 0;
-        if (t < a.Start || t > a.End) return false;
+        if (!a.Enabled || t < a.Start || t > a.End) return false;
         double fin = Math.Clamp((t - a.Start) / InMs, 0, 1);
         double fout = Math.Clamp((a.End - t) / OutMs, 0, 1);
         k = (float)Math.Min(EaseOut(fin), fout);

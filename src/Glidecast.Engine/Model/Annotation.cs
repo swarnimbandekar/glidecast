@@ -28,6 +28,8 @@ public sealed class Annotation
     public string? Color { get; set; }
     /// <summary>Created by <see cref="AnnotationAuthor"/>; regenerating replaces these but keeps hand-made ones.</summary>
     public bool Auto { get; set; }
+    /// <summary>When false, this annotation is hidden in the preview and excluded from export.</summary>
+    public bool Enabled { get; set; } = true;
 
     public Annotation Clone() => (Annotation)MemberwiseClone();
 
@@ -90,14 +92,18 @@ public static class AnnotationAuthor
                 });
             }
 
-            if (o.Highlights && boxable)
+            if (o.Highlights)
             {
                 const double pad = 6;
+                double hw = boxable ? el!.W + 2 * pad : Math.Clamp(p.Width * 0.08, 72, 160);
+                double hh = boxable ? el!.H + 2 * pad : Math.Clamp(p.Height * 0.06, 40, 88);
+                double hx = boxable ? el!.X - pad : Math.Clamp(c.X - hw / 2, 0, Math.Max(0, p.Width - hw));
+                double hy = boxable ? el!.Y - pad : Math.Clamp(c.Y - hh / 2, 0, Math.Max(0, p.Height - hh));
                 list.Add(new Annotation
                 {
                     Kind = AnnotationKind.Highlight, Auto = true,
                     Start = c.T - 120, End = c.T + 1500,
-                    X = el!.X - pad, Y = el.Y - pad, W = el.W + 2 * pad, H = el.H + 2 * pad,
+                    X = hx, Y = hy, W = hw, H = hh,
                 });
             }
 

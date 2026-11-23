@@ -44,6 +44,13 @@ public partial class PrepareBar : Window
         Fps30.IsChecked = !_o.Fps60;
         Fps60.IsChecked = _o.Fps60;
         AnnotateToggle.IsChecked = _o.Annotate;
+        AnnotateQuickToggle.IsChecked = _o.Annotate;
+        PrepSteps.IsChecked = _o.AnnotateSteps;
+        PrepBoxes.IsChecked = _o.AnnotateBoxes;
+        PrepCaptions.IsChecked = _o.AnnotateCaptions;
+        PrepLivePreview.IsChecked = _o.LiveAnnotationPreview;
+        AnnotateDetails.IsEnabled = _o.Annotate;
+        AnnotateDetails.Opacity = _o.Annotate ? 1.0 : 0.45;
         ShapeCircle.IsChecked = _o.CameraShape == WebcamShape.Circle;
         ShapeSquare.IsChecked = _o.CameraShape == WebcamShape.Square;
         ShapeOval.IsChecked = _o.CameraShape == WebcamShape.Oval;
@@ -151,10 +158,27 @@ public partial class PrepareBar : Window
 
     private void Setting_Changed(object sender, RoutedEventArgs e)
     {
-        if (_loading || Count5 == null || AnnotateToggle == null) return;
+        if (_loading || Count5 == null || AnnotateToggle == null || PrepSteps == null) return;
         _o.Countdown = Count0.IsChecked == true ? 0 : Count5.IsChecked == true ? 5 : 3;
         _o.Fps60 = Fps60.IsChecked == true;
         _o.Annotate = AnnotateToggle.IsChecked == true;
+        _o.AnnotateSteps = PrepSteps.IsChecked == true;
+        _o.AnnotateBoxes = PrepBoxes.IsChecked == true;
+        _o.AnnotateCaptions = PrepCaptions.IsChecked == true;
+        _o.LiveAnnotationPreview = PrepLivePreview.IsChecked == true;
+        AnnotateQuickToggle.IsChecked = _o.Annotate;
+        AnnotateDetails.IsEnabled = _o.Annotate;
+        AnnotateDetails.Opacity = _o.Annotate ? 1.0 : 0.45;
+        _o.Save();
+    }
+
+    private void AnnotateQuick_Click(object sender, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        _o.Annotate = AnnotateQuickToggle.IsChecked == true;
+        AnnotateToggle.IsChecked = _o.Annotate;
+        AnnotateDetails.IsEnabled = _o.Annotate;
+        AnnotateDetails.Opacity = _o.Annotate ? 1.0 : 0.45;
         _o.Save();
     }
 
